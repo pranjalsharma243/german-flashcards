@@ -7,6 +7,9 @@ import com.example.flashcards.model.Chapter;
 import com.example.flashcards.model.ChapterSummary;
 import com.example.flashcards.model.ExampleSentence;
 import com.example.flashcards.repository.ChapterRepository;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +27,7 @@ public class ChapterService {
         this.exampleSentenceService = exampleSentenceService;
     }
 
+    @Cacheable("chapter-summaries")
     @Transactional(readOnly = true)
     public List<ChapterSummary> getSummaries() {
         return chapterRepository.findAll().stream()
@@ -38,6 +42,7 @@ public class ChapterService {
                 .toList();
     }
 
+    @Cacheable(value = "chapters", key = "#chapterId")
     @Transactional
     public Chapter getChapter(String chapterId) {
         ChapterEntity chapter = chapterRepository.findById(chapterId)
@@ -56,6 +61,10 @@ public class ChapterService {
         );
     }
 
+    @Caching(evict = {
+        @CacheEvict(value = "chapters", key = "#result.id()"),
+        @CacheEvict(value = "chapter-summaries", allEntries = true)
+    })
     @Transactional
     public Chapter saveChapter(String level, String title, String theme, List<Card> cards) {
         String chapterId = slugify(level, title);
@@ -89,6 +98,10 @@ public class ChapterService {
         return toDto(entity);
     }
 
+    @Caching(evict = {
+        @CacheEvict(value = "chapters", key = "#chapterId"),
+        @CacheEvict(value = "chapter-summaries", allEntries = true)
+    })
     @Transactional
     public void deleteChapter(String chapterId) {
         if (!chapterRepository.existsById(chapterId)) {
