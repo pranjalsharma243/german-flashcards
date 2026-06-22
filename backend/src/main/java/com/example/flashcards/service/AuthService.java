@@ -1,6 +1,7 @@
 package com.example.flashcards.service;
 
 import com.example.flashcards.entity.AppUser;
+import com.example.flashcards.exception.UserAlreadyExistsException;
 import com.example.flashcards.model.AuthRequest;
 import com.example.flashcards.model.AuthResponse;
 import com.example.flashcards.repository.UserRepository;
@@ -25,7 +26,7 @@ public class AuthService {
     public AuthResponse register(AuthRequest request) {
         String username = normalizeUsername(request.username());
         if (userRepository.existsByUsernameIgnoreCase(username)) {
-            throw new IllegalArgumentException("Username already exists");
+            throw new UserAlreadyExistsException(username);
         }
 
         String role = userRepository.count() == 0 ? "ADMIN" : "USER";

@@ -4,8 +4,6 @@ import com.example.flashcards.model.AuthRequest;
 import com.example.flashcards.model.AuthResponse;
 import com.example.flashcards.service.AuthService;
 import jakarta.validation.Valid;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,10 +26,5 @@ public class AuthController {
     @PostMapping("/login")
     public AuthResponse login(@Valid @RequestBody AuthRequest request) {
         return authService.login(request);
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<String> handleAuthError(IllegalArgumentException exception) {
-        return ResponseEntity.badRequest().body(exception.getMessage());
     }
 }
