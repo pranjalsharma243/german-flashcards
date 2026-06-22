@@ -18,6 +18,12 @@ import java.util.Optional;
 public class JwtService {
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder DECODER = Base64.getUrlDecoder();
+
+    private static byte[] decodeBase64Url(String s) {
+        int pad = s.length() % 4;
+        if (pad > 0) s = s + "=".repeat(4 - pad);
+        return DECODER.decode(s);
+    }
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
@@ -64,7 +70,7 @@ public class JwtService {
                 return Optional.empty();
             }
 
-            Map<String, Object> claims = objectMapper.readValue(DECODER.decode(parts[1]), MAP_TYPE);
+            Map<String, Object> claims = objectMapper.readValue(decodeBase64Url(parts[1]), MAP_TYPE);
             long expiration = ((Number) claims.get("exp")).longValue();
             if (Instant.now().getEpochSecond() >= expiration) {
                 return Optional.empty();
@@ -85,7 +91,7 @@ public class JwtService {
             if (parts.length != 3) {
                 return Optional.empty();
             }
-            Map<String, Object> claims = objectMapper.readValue(DECODER.decode(parts[1]), MAP_TYPE);
+            Map<String, Object> claims = objectMapper.readValue(decodeBase64Url(parts[1]), MAP_TYPE);
             Object role = claims.get("role");
             return role instanceof String r && !r.isBlank() ? Optional.of(r) : Optional.of("USER");
         } catch (Exception exception) {

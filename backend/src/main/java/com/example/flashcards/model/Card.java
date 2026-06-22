@@ -1,5 +1,6 @@
 package com.example.flashcards.model;
 
+import java.io.Serializable;
 import java.util.List;
 
 public record Card(
@@ -10,5 +11,5 @@ public record Card(
         String english,
         String hindi,
         List<ExampleSentence> exampleSentences
-) {
+) implements Serializable {
 }

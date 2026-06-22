@@ -1,5 +1,6 @@
 package com.example.flashcards.model;
 
+import java.io.Serializable;
 import java.util.List;
 
 public record Chapter(
@@ -8,5 +9,5 @@ public record Chapter(
         String title,
         String theme,
         List<Card> cards
-) {
+) implements Serializable {
 }
