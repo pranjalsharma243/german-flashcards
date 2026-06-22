@@ -302,7 +302,14 @@ function AuthScreen({ initialMode, onSuccess, onBack }: { initialMode: AuthMode;
   function submit(e: React.FormEvent) {
     e.preventDefault(); setLoading(true); setError('');
     fetch(`${API}/auth/${mode}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) })
-      .then(async r => { if (!r.ok) throw new Error(await r.text()); return r.json() as Promise<AuthSession>; })
+      .then(async r => {
+        if (!r.ok) {
+          const data = await r.json().catch(() => ({ message: 'Auth failed', errors: [] as string[] }));
+          const msg = data.errors?.length ? `${data.message}: ${data.errors.join(', ')}` : (data.message || 'Auth failed');
+          throw new Error(msg);
+        }
+        return r.json() as Promise<AuthSession>;
+      })
       .then(s => { setPassword(''); onSuccess(s); })
       .catch(ex => setError(ex instanceof Error && ex.message ? ex.message : 'Auth failed'))
       .finally(() => setLoading(false));
@@ -329,7 +336,7 @@ function AuthScreen({ initialMode, onSuccess, onBack }: { initialMode: AuthMode;
               <p className="mt-0.5 text-xs text-muted-foreground">{mode === 'login' ? 'Continue your learning' : 'Start learning German'}</p>
             </div>
             <form className="grid gap-4" onSubmit={submit}>
-              <label className="grid gap-1.5"><span className="text-xs font-medium">Username</span><Input value={username} onChange={e => setUsername(e.target.value)} minLength={3} maxLength={80} autoComplete="username" required placeholder="Your username" /></label>
+              <label className="grid gap-1.5"><span className="text-xs font-medium">Email</span><Input type="email" value={username} onChange={e => setUsername(e.target.value)} maxLength={80} autoComplete="email" required placeholder="your@email.com" /></label>
               <label className="grid gap-1.5"><span className="text-xs font-medium">Password</span><Input type="password" value={password} onChange={e => setPassword(e.target.value)} minLength={6} maxLength={120} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required placeholder="Your password" /></label>
               {error && <div className="animate-fade-up rounded-lg border border-destructive/20 bg-destructive/8 p-2.5 text-xs font-medium text-destructive">{error}</div>}
               <Button disabled={loading} className="w-full">
