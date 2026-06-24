@@ -206,15 +206,27 @@ public class AiService {
     }
 
     private List<Card> parseCardsFromJson(String json) throws Exception {
-        JsonNode arr = objectMapper.readTree(json);
+        try {
+            return parseNodes(objectMapper.readTree(json));
+        } catch (Exception e) {
+            // JSON truncated mid-object — repair by cutting at last complete entry
+            String repaired = repairTruncatedJsonArray(json);
+            log.warn("AI returned truncated JSON, repaired to {} chars", repaired.length());
+            return parseNodes(objectMapper.readTree(repaired));
+        }
+    }
+
+    private List<Card> parseNodes(JsonNode arr) {
         List<Card> cards = new ArrayList<>();
         for (JsonNode node : arr) {
+            String word = node.path("word").asText("").trim();
+            if (word.isEmpty()) continue;
             String article = node.path("article").isNull() ? null : node.path("article").asText(null);
             cards.add(new Card(
                     null,
                     node.path("type").asText("noun"),
                     (article != null && article.isBlank()) ? null : article,
-                    node.path("word").asText(""),
+                    word,
                     node.path("english").asText(""),
                     node.path("hindi").asText(""),
                     null
@@ -223,10 +235,21 @@ public class AiService {
         return cards;
     }
 
+    private String repairTruncatedJsonArray(String json) {
+        // Find the last fully closed object "}" and close the array after it
+        int lastClose = json.lastIndexOf('}');
+        if (lastClose >= 0) {
+            return json.substring(0, lastClose + 1) + "]";
+        }
+        return "[]";
+    }
+
     private String extractJsonArray(String text) {
         int start = text.indexOf('[');
         int end = text.lastIndexOf(']');
         if (start >= 0 && end > start) return text.substring(start, end + 1);
-        return text;
+        // No closing bracket — try to repair
+        if (start >= 0) return repairTruncatedJsonArray(text.substring(start));
+        return "[]";
     }
 }
