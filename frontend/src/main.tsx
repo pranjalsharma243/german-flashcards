@@ -734,7 +734,7 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
       const res = await fetch(`${API}/ai/hint`, {
         method: 'POST',
         headers: hdrs(auth.token),
-        body: JSON.stringify({ cardId: card.id, word: card.word, article: card.article ?? '', english: card.english, hindi: card.hindi, wrongAnswer }),
+        body: JSON.stringify({ cardId: card.id, word: card.word, article: card.article ?? '', english: card.english, hindi: card.hindi, wrongAnswer: wrongAnswer || '(no answer)' }),
       });
       if (res.ok) {
         const data = await res.json() as { hint: string; available: boolean };
