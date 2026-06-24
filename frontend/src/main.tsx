@@ -821,13 +821,16 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
       )}
       <section className="flex h-full flex-col">
         {/* Navbar */}
-        <header className="sticky top-0 z-40 animate-fade-down border-b border-white/50 bg-white/80 px-4 py-2.5 shadow-glow-sm backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/75 md:px-6">
-          <div className="mx-auto flex max-w-6xl items-center gap-3">
-            <div className="flex items-center gap-2">
+        <header className="sticky top-0 z-40 animate-fade-down border-b border-white/50 bg-white/80 shadow-glow-sm backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/75">
+          {/* Row 1: Logo | Chapter selector | User controls */}
+          <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2 md:px-6">
+            {/* Logo */}
+            <div className="flex shrink-0 items-center gap-2">
               <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-white transition-transform hover:scale-105"><Languages className="h-4 w-4" /></div>
               <span className="hidden text-sm font-bold sm:block">Deutsch Meister</span>
             </div>
 
+            {/* Chapter + level selector (desktop) */}
             <div className="hidden items-center gap-1.5 md:flex">
               <div className="flex gap-0.5 rounded-md border bg-muted/30 p-0.5 dark:border-white/10">
                 {['all', ...levels].map(lv => (
@@ -839,55 +842,66 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
                 ))}
               </div>
               <Select value={selId} onValueChange={setSelId}>
-                <SelectTrigger className="h-9 min-w-[140px] max-w-[200px] bg-white/80 text-xs dark:border-white/10 dark:bg-slate-950/70"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-8 min-w-[130px] max-w-[200px] bg-white/80 text-xs dark:border-white/10 dark:bg-slate-950/70"><SelectValue /></SelectTrigger>
                 <SelectContent>{visibleChapters.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}</SelectContent>
               </Select>
             </div>
 
-            <nav className="hidden min-w-0 flex-1 justify-center overflow-x-auto md:flex">
-              <div className="inline-flex shrink-0 gap-0.5 rounded-lg bg-muted/40 p-0.5">
-                {navs.map(n => (
-                  <button key={n.v} onClick={() => { setMode(n.v); setMobMenu(false); }}
-                    title={n.l}
-                    className={cn('flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium transition-all',
-                      mode === n.v ? 'bg-white text-foreground shadow-sm dark:bg-slate-900 dark:text-white' : 'text-muted-foreground hover:text-foreground')}>
-                    {n.icon}<span className="hidden lg:inline">{n.l}</span>
-                  </button>
-                ))}
-              </div>
-            </nav>
+            {/* Spacer */}
+            <div className="flex-1" />
 
-            <div className="ml-auto flex items-center gap-2">
-              <div className="hidden items-center gap-2.5 rounded-full border bg-white/60 px-3 py-1 lg:flex dark:border-white/10 dark:bg-slate-950/55">
-                <div className="grid min-w-20 gap-0.5">
-                  <div className="flex justify-between text-[10px] font-medium text-muted-foreground"><span>Progress</span><span className="text-primary">{pct}%</span></div>
-                  <Progress value={pct} className="h-1" />
+            {/* User controls (desktop) */}
+            <div className="hidden items-center gap-1.5 md:flex">
+              {xpData.streak > 0 && (
+                <div className="flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
+                  🔥 {xpData.streak}
                 </div>
+              )}
+              {xpData.todayXp > 0 && (
+                <div className="flex items-center gap-1 rounded-full bg-primary/8 px-2.5 py-1 text-xs font-bold text-primary">
+                  ⚡ {xpData.todayXp} XP
+                </div>
+              )}
+              <div className="hidden items-center gap-2 rounded-full border bg-white/60 px-2.5 py-1 lg:flex dark:border-white/10 dark:bg-slate-950/55">
+                <span className="text-[10px] font-medium text-muted-foreground">Progress</span>
+                <Progress value={pct} className="h-1.5 w-16" />
+                <span className="text-[10px] font-bold text-primary">{pct}%</span>
               </div>
-              <div className="hidden items-center gap-1.5 lg:flex">
-                {xpData.streak > 0 && (
-                  <div className="flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
-                    🔥 {xpData.streak}
-                  </div>
-                )}
-                {xpData.todayXp > 0 && (
-                  <div className="flex items-center gap-1 rounded-full bg-primary/8 px-2.5 py-1 text-xs font-bold text-primary">
-                    ⚡ {xpData.todayXp} XP
-                  </div>
-                )}
-                <Button variant="ghost" size="icon" onClick={onToggleTheme} className="h-7 w-7" aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>
-                  <SunMoon className="h-3.5 w-3.5" />
-                </Button>
-                <div className="grid h-7 w-7 place-items-center rounded-full bg-primary/8 text-primary"><User className="h-3.5 w-3.5" /></div>
-                <span className="max-w-[80px] truncate text-xs font-medium">{auth.username}</span>
-                <Button variant="ghost" size="icon" onClick={onLogout} className="h-7 w-7"><LogOut className="h-3.5 w-3.5" /></Button>
-              </div>
-              <Badge variant="secondary" className="text-[10px] md:hidden">{pct}%</Badge>
-              <Button variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={() => setMobMenu(v => !v)}>
-                {mobMenu ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+              <Button variant="ghost" size="icon" onClick={onToggleTheme} className="h-7 w-7" aria-label="Toggle theme">
+                <SunMoon className="h-3.5 w-3.5" />
               </Button>
+              <div className="flex items-center gap-1.5 rounded-full border bg-white/60 px-2.5 py-1 dark:border-white/10 dark:bg-slate-950/55">
+                <div className="grid h-5 w-5 place-items-center rounded-full bg-primary/10 text-primary"><User className="h-3 w-3" /></div>
+                <span className="max-w-[72px] truncate text-xs font-medium">{auth.username}</span>
+              </div>
+              <Button variant="ghost" size="icon" onClick={onLogout} className="h-7 w-7" title="Logout"><LogOut className="h-3.5 w-3.5" /></Button>
             </div>
+
+            {/* Mobile: progress badge + hamburger */}
+            <Badge variant="secondary" className="text-[10px] md:hidden">{pct}%</Badge>
+            <Button variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={() => setMobMenu(v => !v)}>
+              {mobMenu ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+            </Button>
           </div>
+
+          {/* Row 2: Navigation tabs (desktop only) */}
+          <nav className="hidden border-t border-border/50 dark:border-white/8 md:block">
+            <div className="mx-auto flex max-w-6xl items-center justify-center gap-0.5 px-4 py-1 md:px-6">
+              {navs.map(n => (
+                <button key={n.v} onClick={() => { setMode(n.v); setMobMenu(false); }}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all',
+                    mode === n.v
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                  )}>
+                  {n.icon}{n.l}
+                </button>
+              ))}
+            </div>
+          </nav>
+
+          {/* Mobile dropdown menu */}
           {mobMenu && (
             <div className="absolute inset-x-0 top-full z-50 animate-fade-down border-b bg-white/95 p-3 shadow-sm backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/90 md:hidden">
               <div className="mb-2 flex gap-0.5 rounded-md border bg-muted/30 p-0.5 dark:border-white/10">
@@ -899,19 +913,22 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
                   </button>
                 ))}
               </div>
-              <Select value={selId} onValueChange={setSelId}><SelectTrigger className="mb-2 bg-white/80 dark:border-white/10 dark:bg-slate-950/70"><SelectValue /></SelectTrigger><SelectContent>{visibleChapters.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}</SelectContent></Select>
-              <div className={cn('grid gap-1.5', navs.length > 7 ? 'grid-cols-8' : navs.length > 6 ? 'grid-cols-7' : navs.length > 5 ? 'grid-cols-6' : navs.length > 4 ? 'grid-cols-5' : 'grid-cols-4')}>
+              <Select value={selId} onValueChange={setSelId}>
+                <SelectTrigger className="mb-2 bg-white/80 dark:border-white/10 dark:bg-slate-950/70"><SelectValue /></SelectTrigger>
+                <SelectContent>{visibleChapters.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}</SelectContent>
+              </Select>
+              <div className="grid grid-cols-5 gap-1">
                 {navs.map(n => (
                   <button key={n.v} onClick={() => { setMode(n.v); setMobMenu(false); }}
-                    className={cn('flex flex-col items-center gap-1 rounded-lg p-2 text-[10px] font-medium transition-all',
-                      mode === n.v ? 'bg-primary/8 text-primary' : 'text-muted-foreground')}>
+                    className={cn('flex flex-col items-center gap-1 rounded-xl p-2 text-[10px] font-medium transition-all',
+                      mode === n.v ? 'bg-primary/8 text-primary' : 'text-muted-foreground hover:bg-muted/50')}>
                     {n.icon}{n.l}
                   </button>
                 ))}
               </div>
               <div className="mt-2 flex items-center justify-between rounded-lg bg-muted/20 p-2">
                 <div className="flex items-center gap-1.5">
-                  <Button variant="ghost" size="icon" onClick={onToggleTheme} className="h-7 w-7" aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>
+                  <Button variant="ghost" size="icon" onClick={onToggleTheme} className="h-7 w-7">
                     <SunMoon className="h-3 w-3" />
                   </Button>
                   <div className="grid h-6 w-6 place-items-center rounded-full bg-primary/8 text-primary"><User className="h-3 w-3" /></div>
