@@ -3,6 +3,7 @@ package com.example.flashcards.controller;
 import com.example.flashcards.model.Card;
 import com.example.flashcards.model.Chapter;
 import com.example.flashcards.model.ChapterSummary;
+import com.example.flashcards.service.AiService;
 import com.example.flashcards.service.ChapterService;
 import com.example.flashcards.service.PdfParsingService;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -27,11 +28,14 @@ import java.util.NoSuchElementException;
 public class AdminController {
     private final ChapterService chapterService;
     private final PdfParsingService pdfParsingService;
+    private final AiService aiService;
     private final ObjectMapper objectMapper;
 
-    public AdminController(ChapterService chapterService, PdfParsingService pdfParsingService, ObjectMapper objectMapper) {
+    public AdminController(ChapterService chapterService, PdfParsingService pdfParsingService,
+                           AiService aiService, ObjectMapper objectMapper) {
         this.chapterService = chapterService;
         this.pdfParsingService = pdfParsingService;
+        this.aiService = aiService;
         this.objectMapper = objectMapper;
     }
 
@@ -80,6 +84,19 @@ public class AdminController {
         return chapterService.saveChapter(request.level(), request.title(), request.theme(), request.cards());
     }
 
+    @PostMapping("/ai/translate")
+    public List<Card> aiTranslate(@RequestBody AiTranslateRequest request) {
+        if (request.words() == null || request.words().isEmpty()) {
+            throw new IllegalArgumentException("Words list cannot be empty");
+        }
+        return aiService.translateWords(request.words());
+    }
+
+    @PostMapping("/chapters/{chapterId}/cards/append")
+    public Chapter appendCards(@PathVariable String chapterId, @RequestBody List<Card> newCards) {
+        return chapterService.appendCards(chapterId, newCards);
+    }
+
     @DeleteMapping("/chapters/{chapterId}")
     public ResponseEntity<Void> deleteChapter(@PathVariable String chapterId) {
         chapterService.deleteChapter(chapterId);
@@ -97,4 +114,5 @@ public class AdminController {
     }
 
     public record SaveChapterRequest(String level, String title, String theme, List<Card> cards) {}
+    public record AiTranslateRequest(List<String> words) {}
 }

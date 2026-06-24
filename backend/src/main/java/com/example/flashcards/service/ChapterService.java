@@ -103,6 +103,32 @@ public class ChapterService {
         @CacheEvict(value = "chapter-summaries", allEntries = true)
     })
     @Transactional
+    public Chapter appendCards(String chapterId, List<Card> newCards) {
+        ChapterEntity chapter = chapterRepository.findById(chapterId)
+                .orElseThrow(() -> new NoSuchElementException("Chapter not found: " + chapterId));
+        int startPos = chapter.getCards().size() + 1;
+        for (int i = 0; i < newCards.size(); i++) {
+            Card c = newCards.get(i);
+            CardEntity card = new CardEntity();
+            card.setId(chapterId + "-" + (startPos + i));
+            card.setChapter(chapter);
+            card.setPosition(startPos + i);
+            card.setType(c.type() != null ? c.type() : "noun");
+            card.setArticle(c.article());
+            card.setWord(c.word());
+            card.setEnglish(c.english());
+            card.setHindi(c.hindi());
+            chapter.getCards().add(card);
+        }
+        chapterRepository.save(chapter);
+        return toDto(chapter);
+    }
+
+    @Caching(evict = {
+        @CacheEvict(value = "chapters", key = "#chapterId"),
+        @CacheEvict(value = "chapter-summaries", allEntries = true)
+    })
+    @Transactional
     public void deleteChapter(String chapterId) {
         if (!chapterRepository.existsById(chapterId)) {
             throw new NoSuchElementException("Chapter not found: " + chapterId);

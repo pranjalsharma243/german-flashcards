@@ -2,6 +2,7 @@ package com.example.flashcards.service;
 
 import com.example.flashcards.model.AiHintResponse;
 import com.example.flashcards.model.AiSentenceResponse;
+import com.example.flashcards.model.Card;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -10,6 +11,10 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class AiService {
@@ -86,9 +91,64 @@ public class AiService {
         }
     }
 
+    public List<Card> translateWords(List<String> words) {
+        if (!enabled) throw new IllegalStateException("AI translation is not configured");
+        String wordList = words.stream()
+                .filter(w -> w != null && !w.isBlank())
+                .map(w -> "- " + w.trim())
+                .collect(Collectors.joining("\n"));
+        try {
+            String raw = chatClient.prompt()
+                    .user(u -> u.text("""
+                            Translate these German words to English and Hindi.
+                            For each word return a JSON object with:
+                            - "type": one of noun/verb/adjective/adverb/phrase
+                            - "article": "der", "die", or "das" for nouns, null for others
+                            - "word": the German word exactly as provided
+                            - "english": concise English meaning
+                            - "hindi": Hindi meaning in Devanagari script
+
+                            German words:
+                            {words}
+
+                            Return ONLY a valid JSON array. No markdown, no code blocks, no explanation.
+                            """)
+                            .param("words", wordList))
+                    .call()
+                    .content();
+            if (raw == null) throw new RuntimeException("Empty response from AI");
+            String json = extractJsonArray(raw.trim());
+            JsonNode arr = objectMapper.readTree(json);
+            List<Card> cards = new ArrayList<>();
+            for (JsonNode node : arr) {
+                String article = node.path("article").isNull() ? null : node.path("article").asText(null);
+                cards.add(new Card(
+                        null,
+                        node.path("type").asText("noun"),
+                        (article != null && article.isBlank()) ? null : article,
+                        node.path("word").asText(""),
+                        node.path("english").asText(""),
+                        node.path("hindi").asText(""),
+                        null
+                ));
+            }
+            return cards;
+        } catch (Exception e) {
+            log.warn("AI translation failed: {}", e.getMessage());
+            throw new RuntimeException("AI translation failed: " + e.getMessage());
+        }
+    }
+
     private String extractJson(String text) {
         int start = text.indexOf('{');
         int end = text.lastIndexOf('}');
+        if (start >= 0 && end > start) return text.substring(start, end + 1);
+        return text;
+    }
+
+    private String extractJsonArray(String text) {
+        int start = text.indexOf('[');
+        int end = text.lastIndexOf(']');
         if (start >= 0 && end > start) return text.substring(start, end + 1);
         return text;
     }

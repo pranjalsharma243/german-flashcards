@@ -1785,7 +1785,7 @@ function LibraryView({ cards, knownIds, practiceIds, speakGerman, mark, isAdmin,
 
 /* ═══════════════ ADMIN PANEL ═══════════════ */
 
-type AdminTab = 'chapters' | 'json' | 'pdf';
+type AdminTab = 'chapters' | 'json' | 'pdf' | 'ai';
 
 function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: () => void }) {
   const [tab, setTab] = React.useState<AdminTab>('chapters');
@@ -1809,6 +1809,17 @@ function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: 
   const [pdfCards, setPdfCards] = React.useState<CardItem[]>([]);
   const [pdfParsing, setPdfParsing] = React.useState(false);
   const [pdfSaving, setPdfSaving] = React.useState(false);
+
+  // AI Import state
+  const [aiWords, setAiWords] = React.useState('');
+  const [aiCards, setAiCards] = React.useState<CardItem[]>([]);
+  const [aiTranslating, setAiTranslating] = React.useState(false);
+  const [aiSaving, setAiSaving] = React.useState(false);
+  const [aiSaveMode, setAiSaveMode] = React.useState<'existing' | 'new'>('existing');
+  const [aiChapterId, setAiChapterId] = React.useState('');
+  const [aiLevel, setAiLevel] = React.useState('');
+  const [aiTitle, setAiTitle] = React.useState('');
+  const [aiTheme, setAiTheme] = React.useState('');
 
   function loadChapters() {
     setLoading(true);
@@ -1878,6 +1889,58 @@ function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: 
     setPdfCards(cards => cards.filter((_, i) => i !== idx));
   }
 
+  function translateWithAi() {
+    const words = aiWords.split('\n').map(w => w.trim()).filter(Boolean);
+    if (!words.length) { setErr('Koi word nahi dala!'); return; }
+    setAiTranslating(true); setErr(''); setMsg(''); setAiCards([]);
+    fetch(`${API}/admin/ai/translate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ words }),
+    })
+      .then(async r => { if (!r.ok) throw new Error(await r.text()); return r.json() as Promise<CardItem[]>; })
+      .then(cards => { setAiCards(cards); if (!cards.length) setErr('AI ne koi result nahi diya.'); })
+      .catch(ex => setErr(ex.message || 'Translation failed'))
+      .finally(() => setAiTranslating(false));
+  }
+
+  function saveAiCards(e: React.FormEvent) {
+    e.preventDefault();
+    if (!aiCards.length) return;
+    setAiSaving(true); setErr(''); setMsg('');
+    if (aiSaveMode === 'existing') {
+      if (!aiChapterId) { setErr('Chapter select karo'); setAiSaving(false); return; }
+      fetch(`${API}/admin/chapters/${aiChapterId}/cards/append`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(aiCards),
+      })
+        .then(async r => { if (!r.ok) throw new Error(await r.text()); return r.json(); })
+        .then(() => { setMsg('Words chapter mein add ho gaye!'); setAiCards([]); setAiWords(''); loadChapters(); onChapterSaved(); })
+        .catch(ex => setErr(ex.message || 'Save failed'))
+        .finally(() => setAiSaving(false));
+    } else {
+      if (!aiLevel || !aiTitle) { setErr('Level aur Title required hain'); setAiSaving(false); return; }
+      fetch(`${API}/admin/chapters/save`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ level: aiLevel, title: aiTitle, theme: aiTheme || aiTitle, cards: aiCards }),
+      })
+        .then(async r => { if (!r.ok) throw new Error(await r.text()); return r.json(); })
+        .then(() => { setMsg('Naya chapter ban gaya!'); setAiCards([]); setAiWords(''); setAiLevel(''); setAiTitle(''); setAiTheme(''); loadChapters(); onChapterSaved(); })
+        .catch(ex => setErr(ex.message || 'Save failed'))
+        .finally(() => setAiSaving(false));
+    }
+  }
+
+  function updateAiCard(idx: number, field: keyof CardItem, value: string) {
+    setAiCards(cards => cards.map((c, i) => i === idx ? { ...c, [field]: value } : c));
+  }
+
+  function removeAiCard(idx: number) {
+    setAiCards(cards => cards.filter((_, i) => i !== idx));
+  }
+
   return (
     <section className="grid gap-4 animate-fade-up pb-6">
       <div className="flex items-center justify-between">
@@ -1891,10 +1954,11 @@ function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: 
       {err && <div className="animate-fade-up rounded-lg border border-destructive/20 bg-destructive/8 p-3 text-xs font-medium text-destructive">{err}</div>}
 
       <Tabs value={tab} onValueChange={v => setTab(v as AdminTab)}>
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="chapters">Chapters</TabsTrigger>
-          <TabsTrigger value="json">JSON Upload</TabsTrigger>
-          <TabsTrigger value="pdf">PDF Upload</TabsTrigger>
+          <TabsTrigger value="json">JSON</TabsTrigger>
+          <TabsTrigger value="pdf">PDF</TabsTrigger>
+          <TabsTrigger value="ai">AI Import</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -2067,6 +2131,126 @@ function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: 
                   </div>
                   <Button type="submit" disabled={pdfSaving || !pdfLevel || !pdfTitle || !pdfCards.length}>
                     {pdfSaving ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> Saving...</> : <><Check className="h-4 w-4" /> Save Chapter</>}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* AI Import tab */}
+      {tab === 'ai' && (
+        <div className="grid gap-4">
+          <Card className="glass-panel rounded-xl">
+            <CardContent className="p-5">
+              <div className="mb-4">
+                <h2 className="text-sm font-bold">AI Vocabulary Import</h2>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  German words paste karo (ek line mein ek word). AI automatically English aur Hindi translation karega.
+                </p>
+              </div>
+              <div className="grid gap-3">
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-medium">German Words (one per line)</span>
+                  <textarea
+                    value={aiWords}
+                    onChange={e => setAiWords(e.target.value)}
+                    placeholder={'Reise\nUrlaub\nGefühl\nreisen\nschön'}
+                    rows={8}
+                    className="w-full rounded-lg border bg-white/50 px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-primary/40 dark:border-white/10 dark:bg-slate-950/55"
+                  />
+                </label>
+                <Button onClick={translateWithAi} disabled={aiTranslating || !aiWords.trim()}>
+                  {aiTranslating
+                    ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> AI translate kar raha hai...</>
+                    : <><Sparkles className="h-4 w-4" /> Translate with AI</>}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {aiCards.length > 0 && (
+            <Card className="glass-panel rounded-xl animate-fade-up">
+              <CardContent className="p-5">
+                <form onSubmit={saveAiCards} className="grid gap-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-sm font-bold">Translated Words — Review karo</h2>
+                    <Badge variant="muted" className="text-[10px]">{aiCards.length} words</Badge>
+                  </div>
+
+                  <div className="max-h-[380px] overflow-y-auto rounded-lg border dark:border-white/10">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-muted/80 backdrop-blur dark:bg-slate-900/80">
+                        <tr>
+                          <th className="p-2 text-left font-medium">#</th>
+                          <th className="p-2 text-left font-medium">Type</th>
+                          <th className="p-2 text-left font-medium">Article</th>
+                          <th className="p-2 text-left font-medium">Word</th>
+                          <th className="p-2 text-left font-medium">English</th>
+                          <th className="p-2 text-left font-medium">Hindi</th>
+                          <th className="p-2 text-left font-medium"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {aiCards.map((c, i) => (
+                          <tr key={i} className="border-t hover:bg-muted/10 dark:border-white/10">
+                            <td className="p-2 text-muted-foreground">{i + 1}</td>
+                            <td className="p-1"><Input value={c.type} onChange={e => updateAiCard(i, 'type', e.target.value)} className="h-7 text-[11px]" /></td>
+                            <td className="p-1"><Input value={c.article ?? ''} onChange={e => updateAiCard(i, 'article', e.target.value)} className="h-7 text-[11px]" placeholder="—" /></td>
+                            <td className="p-1"><Input value={c.word} onChange={e => updateAiCard(i, 'word', e.target.value)} className="h-7 text-[11px]" /></td>
+                            <td className="p-1"><Input value={c.english} onChange={e => updateAiCard(i, 'english', e.target.value)} className="h-7 text-[11px]" /></td>
+                            <td className="p-1"><Input value={c.hindi} onChange={e => updateAiCard(i, 'hindi', e.target.value)} className="h-7 text-[11px]" /></td>
+                            <td className="p-1"><Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => removeAiCard(i)}><Trash2 className="h-3 w-3" /></Button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="grid gap-3 rounded-lg border bg-muted/10 p-4 dark:border-white/10">
+                    <p className="text-xs font-semibold">Kahan save karna hai?</p>
+                    <div className="flex gap-3">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="aiSaveMode" value="existing" checked={aiSaveMode === 'existing'} onChange={() => setAiSaveMode('existing')} className="accent-primary" />
+                        <span className="text-xs font-medium">Existing chapter mein add karo</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="aiSaveMode" value="new" checked={aiSaveMode === 'new'} onChange={() => setAiSaveMode('new')} className="accent-primary" />
+                        <span className="text-xs font-medium">Naya chapter banao</span>
+                      </label>
+                    </div>
+
+                    {aiSaveMode === 'existing' ? (
+                      <div className="grid gap-1.5">
+                        <span className="text-xs font-medium">Chapter select karo <span className="text-destructive">*</span></span>
+                        <Select value={aiChapterId} onValueChange={setAiChapterId}>
+                          <SelectTrigger className="bg-white/80 text-xs dark:border-white/10 dark:bg-slate-950/70"><SelectValue placeholder="Chapter choose karo..." /></SelectTrigger>
+                          <SelectContent>{chapters.map(c => <SelectItem key={c.id} value={c.id}>{c.level} · {c.title} ({c.cardCount} cards)</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <label className="grid gap-1.5">
+                          <span className="text-xs font-medium">Level <span className="text-destructive">*</span></span>
+                          <Input value={aiLevel} onChange={e => setAiLevel(e.target.value)} placeholder="e.g. B1.1" />
+                        </label>
+                        <label className="grid gap-1.5">
+                          <span className="text-xs font-medium">Title <span className="text-destructive">*</span></span>
+                          <Input value={aiTitle} onChange={e => setAiTitle(e.target.value)} placeholder="e.g. Chapter 3" />
+                        </label>
+                        <label className="grid gap-1.5">
+                          <span className="text-xs font-medium">Theme</span>
+                          <Input value={aiTheme} onChange={e => setAiTheme(e.target.value)} placeholder="e.g. Arbeit & Beruf" />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+
+                  <Button type="submit" disabled={aiSaving || !aiCards.length}>
+                    {aiSaving
+                      ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> Saving...</>
+                      : <><Check className="h-4 w-4" /> {aiSaveMode === 'existing' ? 'Chapter mein Add Karo' : 'Naya Chapter Banao'}</>}
                   </Button>
                 </form>
               </CardContent>
