@@ -1,6 +1,6 @@
 package com.example.flashcards.model;
 
-public record AiSentenceResponse(String de, String en, boolean available) {
+public record AiSentenceResponse(String de, String en, boolean available) implements java.io.Serializable {
     public static AiSentenceResponse of(String de, String en) {
         return new AiSentenceResponse(de, en, true);
     }

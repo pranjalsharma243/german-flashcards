@@ -1,6 +1,6 @@
 package com.example.flashcards.model;
 
-public record AiHintResponse(String hint, boolean available) {
+public record AiHintResponse(String hint, boolean available) implements java.io.Serializable {
     public static AiHintResponse of(String hint) {
         return new AiHintResponse(hint, true);
     }

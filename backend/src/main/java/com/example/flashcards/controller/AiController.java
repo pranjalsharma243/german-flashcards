@@ -6,6 +6,8 @@ import com.example.flashcards.model.HintRequest;
 import com.example.flashcards.repository.CardRepository;
 import com.example.flashcards.service.AiService;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,8 +29,11 @@ public class AiController {
         this.cardRepository = cardRepository;
     }
 
+    private static final Logger log = LoggerFactory.getLogger(AiController.class);
+
     @PostMapping("/hint")
     public AiHintResponse hint(@Valid @RequestBody HintRequest request) {
+        log.warn("AiController.hint() reached for word={}", request.word());
         return aiService.generateHint(
                 request.cardId(), request.word(), request.article(),
                 request.english(), request.hindi(), request.wrongAnswer()
