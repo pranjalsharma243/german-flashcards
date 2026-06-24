@@ -5,6 +5,8 @@ import com.example.flashcards.model.AiSentenceResponse;
 import com.example.flashcards.model.ChatRequest;
 import com.example.flashcards.model.ChatResponse;
 import com.example.flashcards.model.HintRequest;
+import com.example.flashcards.model.StoryRequest;
+import com.example.flashcards.model.StoryResponse;
 import com.example.flashcards.repository.CardRepository;
 import com.example.flashcards.service.AiService;
 import jakarta.validation.Valid;
@@ -76,6 +78,11 @@ public class AiController {
         emitter.onTimeout(() -> { subscription.dispose(); emitter.complete(); });
         emitter.onError(e -> subscription.dispose());
         return emitter;
+    }
+
+    @PostMapping("/story")
+    public StoryResponse story(@Valid @RequestBody StoryRequest request) {
+        return aiService.generateStory(request.chapterTitle(), request.words());
     }
 
     @GetMapping("/sentence/{cardId}")

@@ -26,7 +26,7 @@ type ChapterSummary = Omit<Chapter, 'cards'> & { cardCount: number };
 type ProgressState = { chapterId: string; knownCardIds: string[]; practiceCardIds: string[]; updatedAt?: string };
 type AuthSession = { token: string; username: string; role: string };
 type ThemeMode = 'light' | 'dark';
-type Mode = 'dashboard' | 'cards' | 'quiz' | 'mcq' | 'articles' | 'grammar' | 'list' | 'admin' | 'contribute' | 'chat';
+type Mode = 'dashboard' | 'cards' | 'quiz' | 'mcq' | 'articles' | 'grammar' | 'list' | 'admin' | 'contribute' | 'chat' | 'story';
 type ChatMsg = { role: 'user' | 'assistant'; content: string; ts: number };
 type VocabRequest = { id: number; submittedBy: string; status: string; sourceType: string; cards: CardItem[]; createdAt: string };
 type SrsEntry = { cardId: string; interval: number; nextReview: number; reps: number };
@@ -805,6 +805,7 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
     { v: 'grammar', icon: <PenLine className="h-4 w-4" />, l: 'Grammar' },
     { v: 'list', icon: <Library className="h-4 w-4" />, l: 'Library' },
     { v: 'chat', icon: <MessageSquare className="h-4 w-4" />, l: 'AI Chat' },
+    { v: 'story', icon: <Sparkles className="h-4 w-4" />, l: 'Story' },
     { v: 'contribute', icon: <Upload className="h-4 w-4" />, l: 'Contribute' },
     ...(auth.role === 'ADMIN' ? [{ v: 'admin' as Mode, icon: <Settings className="h-4 w-4" />, l: 'Admin' }] : []),
   ];
@@ -1650,6 +1651,9 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
                 setLoading={setChatLoading}
                 chapterContext={chapter ? `Chapter: "${chapter.title} - ${chapter.theme}" (Level ${chapter.level}). Vocabulary includes words like: ${chapter.cards.slice(0, 8).map(c => `${c.article ? c.article + ' ' : ''}${c.word} (${c.english})`).join(', ')}.` : undefined}
               />
+            )}
+            {mode === 'story' && (
+              <StoryView token={auth.token} chapter={chapter} />
             )}
           </div>
         </div>
@@ -2975,6 +2979,154 @@ function speakGerman(c: CardItem) {
   const u = new SpeechSynthesisUtterance(`${c.article ? `${c.article} ` : ''}${c.word}`);
   u.lang = 'de-DE'; u.rate = 0.86; u.pitch = 1;
   window.speechSynthesis.speak(u);
+}
+
+/* ═══════════════ STORY VIEW ═══════════════ */
+type StoryData = { story: string; translation: string; wordsUsed: string[] };
+
+function highlightStoryWords(story: string, words: string[]): React.ReactNode[] {
+  if (!words.length) return [story];
+  const escaped = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const pattern = new RegExp(`\\b(${escaped.join('|')})\\b`, 'gi');
+  const parts = story.split(pattern);
+  const wordSet = new Set(words.map(w => w.toLowerCase()));
+  return parts.map((part, i) =>
+    wordSet.has(part.toLowerCase())
+      ? <mark key={i} className="story-highlight">{part}</mark>
+      : part
+  );
+}
+
+function StoryView({ token, chapter }: { token: string; chapter: Chapter | null }) {
+  const [storyData, setStoryData] = React.useState<StoryData | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [showTranslation, setShowTranslation] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  async function generateStory() {
+    if (!chapter) return;
+    setLoading(true);
+    setError('');
+    setStoryData(null);
+    setShowTranslation(false);
+    try {
+      const words = chapter.cards.slice(0, 30).map(c => ({
+        word: c.word,
+        article: c.article ?? null,
+        english: c.english,
+      }));
+      const res = await fetch(`${API}/ai/story`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chapterTitle: `${chapter.title} — ${chapter.theme}`, words }),
+      });
+      if (!res.ok) throw new Error('Request failed');
+      const data: StoryData = await res.json();
+      setStoryData(data);
+    } catch {
+      setError('Story generation failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="animate-fade-up flex flex-col gap-4">
+      {/* Header */}
+      <div className="flex items-center gap-3 rounded-xl border bg-gradient-to-r from-primary/8 to-accent/8 p-4">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-secondary to-accent text-white shadow-glow">
+          <Sparkles className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="font-bold">AI Story Generator</h2>
+          <p className="text-xs text-muted-foreground">
+            {chapter ? `Using vocabulary from "${chapter.title}"` : 'Select a chapter first to generate a story'}
+          </p>
+        </div>
+        {chapter && (
+          <Button onClick={generateStory} disabled={loading} size="sm" className="shrink-0 gap-1.5">
+            {loading ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />Generating…</> : <><Sparkles className="h-3.5 w-3.5" />Generate</>}
+          </Button>
+        )}
+      </div>
+
+      {/* No chapter selected */}
+      {!chapter && (
+        <div className="glass-panel rounded-xl p-8 text-center text-muted-foreground">
+          <BookOpen className="mx-auto mb-3 h-10 w-10 opacity-30" />
+          <p className="font-medium">No chapter selected</p>
+          <p className="mt-1 text-sm">Go to Home and pick a chapter, then come back here.</p>
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/8 p-4 text-sm text-destructive">{error}</div>
+      )}
+
+      {/* Loading skeleton */}
+      {loading && (
+        <div className="glass-panel rounded-xl p-6 space-y-3">
+          <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
+          <div className="h-4 w-full animate-pulse rounded bg-muted" />
+          <div className="h-4 w-5/6 animate-pulse rounded bg-muted" />
+          <div className="h-4 w-full animate-pulse rounded bg-muted" />
+          <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
+          <p className="pt-2 text-xs text-center text-muted-foreground">Deutschi is writing your story…</p>
+        </div>
+      )}
+
+      {/* Story */}
+      {storyData && !loading && (
+        <>
+          <div className="glass-panel rounded-xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">German Story</h3>
+              <button
+                onClick={() => setShowTranslation(v => !v)}
+                className="flex items-center gap-1 rounded-lg border bg-white/60 px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground dark:border-white/10 dark:bg-slate-950/55"
+              >
+                {showTranslation ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                {showTranslation ? 'Hide' : 'Show'} Translation
+              </button>
+            </div>
+            <p className="text-base leading-8 text-foreground">
+              {highlightStoryWords(storyData.story, storyData.wordsUsed)}
+            </p>
+            {showTranslation && (
+              <div className="mt-4 rounded-lg border-l-2 border-primary/40 bg-primary/5 p-3">
+                <p className="text-sm leading-relaxed text-muted-foreground">{storyData.translation}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Words used */}
+          {storyData.wordsUsed.length > 0 && (
+            <div className="glass-panel rounded-xl p-4">
+              <h3 className="mb-2.5 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Vocabulary Used ({storyData.wordsUsed.length} words)
+              </h3>
+              <div className="flex flex-wrap gap-1.5">
+                {storyData.wordsUsed.map(w => {
+                  const card = chapter?.cards.find(c => c.word.toLowerCase() === w.toLowerCase());
+                  return (
+                    <span key={w} title={card ? `${card.article ? card.article + ' ' : ''}${card.word} — ${card.english}` : w}
+                      className="story-highlight cursor-default rounded-full px-2.5 py-0.5 text-xs font-medium">
+                      {card?.article ? `${card.article} ` : ''}{w}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <Button variant="outline" onClick={generateStory} disabled={loading} className="w-full gap-2">
+            <RotateCcw className="h-3.5 w-3.5" /> Generate Another Story
+          </Button>
+        </>
+      )}
+    </div>
+  );
 }
 
 /* ═══════════════ MOUNT ═══════════════ */

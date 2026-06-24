@@ -5,6 +5,8 @@ import com.example.flashcards.model.AiSentenceResponse;
 import com.example.flashcards.model.Card;
 import com.example.flashcards.model.ChatMessage;
 import com.example.flashcards.model.ChatResponse;
+import com.example.flashcards.model.StoryRequest;
+import com.example.flashcards.model.StoryResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -164,6 +166,45 @@ public class AiService {
         } catch (Exception e) {
             log.warn("AI sentence generation failed for card {}: {}", cardId, e.getMessage());
             return AiSentenceResponse.unavailable();
+        }
+    }
+
+    public StoryResponse generateStory(String chapterTitle, List<StoryRequest.StoryWord> words) {
+        if (!enabled) return StoryResponse.unavailable();
+        String wordList = words.stream()
+                .limit(30)
+                .map(w -> (w.article() != null && !w.article().isBlank() ? w.article() + " " : "") + w.word() + " (" + w.english() + ")")
+                .collect(Collectors.joining(", "));
+        try {
+            String raw = chatClient.prompt()
+                    .options(OpenAiChatOptions.builder().maxTokens(800).build())
+                    .user(u -> u.text("""
+                            Write a short German story (120-150 words) for a B1 learner.
+                            Chapter theme: {theme}
+
+                            Use at least 8 of these vocabulary words naturally in the story:
+                            {words}
+
+                            Return ONLY valid JSON with no markdown:
+                            {"story":"<German story here>","translation":"<English translation here>","wordsUsed":["word1","word2","word3"]}
+                            """)
+                            .param("theme", chapterTitle)
+                            .param("words", wordList))
+                    .call()
+                    .content();
+            if (raw == null) return StoryResponse.unavailable();
+            String json = extractJson(raw.trim());
+            JsonNode node = objectMapper.readTree(json);
+            List<String> wordsUsed = new ArrayList<>();
+            node.path("wordsUsed").forEach(w -> wordsUsed.add(w.asText()));
+            return new StoryResponse(
+                    node.path("story").asText(""),
+                    node.path("translation").asText(""),
+                    wordsUsed
+            );
+        } catch (Exception e) {
+            log.warn("Story generation failed: {}", e.getMessage());
+            return StoryResponse.unavailable();
         }
     }
 

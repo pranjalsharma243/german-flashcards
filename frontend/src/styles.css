@@ -239,3 +239,12 @@
   30% { transform: scale(1.07); }
   65% { transform: scale(0.97); }
 }
+
+.story-highlight {
+  background: linear-gradient(120deg, hsl(var(--primary) / 0.18), hsl(var(--accent) / 0.14));
+  color: hsl(var(--primary));
+  border-radius: 0.25rem;
+  padding: 0.05em 0.25em;
+  font-weight: 600;
+  border: 1px solid hsl(var(--primary) / 0.2);
+}
