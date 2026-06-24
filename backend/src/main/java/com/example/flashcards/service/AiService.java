@@ -185,8 +185,8 @@ public class AiService {
                             Use at least 8 of these vocabulary words naturally in the story:
                             {words}
 
-                            Return ONLY valid JSON with no markdown:
-                            {"story":"<German story here>","translation":"<English translation here>","wordsUsed":["word1","word2","word3"]}
+                            Return ONLY a raw JSON object (no markdown, no code block) with three keys:
+                            "story" (the German story text), "translation" (English translation), "wordsUsed" (array of German words used from the list).
                             """)
                             .param("theme", chapterTitle)
                             .param("words", wordList))
