@@ -822,88 +822,63 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
       <section className="flex h-full flex-col">
         {/* Navbar */}
         <header className="sticky top-0 z-40 animate-fade-down border-b border-white/50 bg-white/80 shadow-glow-sm backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/75">
-          {/* Row 1: Logo | Chapter selector | User controls */}
-          <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2 md:px-6">
+          <div className="mx-auto flex h-12 max-w-7xl items-center gap-2 px-4 md:px-6">
+
             {/* Logo */}
-            <div className="flex shrink-0 items-center gap-2">
-              <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-white transition-transform hover:scale-105"><Languages className="h-4 w-4" /></div>
-              <span className="hidden text-sm font-bold sm:block">Deutsch Meister</span>
+            <div className="flex shrink-0 items-center gap-2 mr-2">
+              <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-white"><Languages className="h-4 w-4" /></div>
+              <span className="hidden text-sm font-bold lg:block">Deutsch Meister</span>
             </div>
 
-            {/* Chapter + level selector (desktop) */}
-            <div className="hidden items-center gap-1.5 md:flex">
-              <div className="flex gap-0.5 rounded-md border bg-muted/30 p-0.5 dark:border-white/10">
-                {['all', ...levels].map(lv => (
-                  <button key={lv} onClick={() => setLevelFilter(lv)}
-                    className={cn('rounded px-2 py-0.5 text-[10px] font-bold uppercase transition-all',
-                      levelFilter === lv ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
-                    {lv === 'all' ? 'All' : lv}
-                  </button>
-                ))}
-              </div>
-              <Select value={selId} onValueChange={setSelId}>
-                <SelectTrigger className="h-8 min-w-[130px] max-w-[200px] bg-white/80 text-xs dark:border-white/10 dark:bg-slate-950/70"><SelectValue /></SelectTrigger>
-                <SelectContent>{visibleChapters.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-
-            {/* Spacer */}
-            <div className="flex-1" />
-
-            {/* User controls (desktop) */}
-            <div className="hidden items-center gap-1.5 md:flex">
-              {xpData.streak > 0 && (
-                <div className="flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
-                  🔥 {xpData.streak}
-                </div>
-              )}
-              {xpData.todayXp > 0 && (
-                <div className="flex items-center gap-1 rounded-full bg-primary/8 px-2.5 py-1 text-xs font-bold text-primary">
-                  ⚡ {xpData.todayXp} XP
-                </div>
-              )}
-              <div className="hidden items-center gap-2 rounded-full border bg-white/60 px-2.5 py-1 lg:flex dark:border-white/10 dark:bg-slate-950/55">
-                <span className="text-[10px] font-medium text-muted-foreground">Progress</span>
-                <Progress value={pct} className="h-1.5 w-16" />
-                <span className="text-[10px] font-bold text-primary">{pct}%</span>
-              </div>
-              <Button variant="ghost" size="icon" onClick={onToggleTheme} className="h-7 w-7" aria-label="Toggle theme">
-                <SunMoon className="h-3.5 w-3.5" />
-              </Button>
-              <div className="flex items-center gap-1.5 rounded-full border bg-white/60 px-2.5 py-1 dark:border-white/10 dark:bg-slate-950/55">
-                <div className="grid h-5 w-5 place-items-center rounded-full bg-primary/10 text-primary"><User className="h-3 w-3" /></div>
-                <span className="max-w-[72px] truncate text-xs font-medium">{auth.username}</span>
-              </div>
-              <Button variant="ghost" size="icon" onClick={onLogout} className="h-7 w-7" title="Logout"><LogOut className="h-3.5 w-3.5" /></Button>
-            </div>
-
-            {/* Mobile: progress badge + hamburger */}
-            <Badge variant="secondary" className="text-[10px] md:hidden">{pct}%</Badge>
-            <Button variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={() => setMobMenu(v => !v)}>
-              {mobMenu ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-            </Button>
-          </div>
-
-          {/* Row 2: Navigation tabs (desktop only) */}
-          <nav className="hidden border-t border-border/50 dark:border-white/8 md:block">
-            <div className="mx-auto flex max-w-6xl items-center justify-center gap-0.5 px-4 py-1 md:px-6">
+            {/* Nav tabs — icon + label, centered, flex-1 */}
+            <nav className="hidden flex-1 items-center justify-center gap-0.5 md:flex">
               {navs.map(n => (
                 <button key={n.v} onClick={() => { setMode(n.v); setMobMenu(false); }}
+                  title={n.l}
                   className={cn(
-                    'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all',
+                    'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all whitespace-nowrap',
                     mode === n.v
                       ? 'bg-primary/10 text-primary'
                       : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                   )}>
-                  {n.icon}{n.l}
+                  {n.icon}
+                  <span className="hidden xl:inline">{n.l}</span>
                 </button>
               ))}
-            </div>
-          </nav>
+            </nav>
 
-          {/* Mobile dropdown menu */}
+            {/* Right: user controls */}
+            <div className="ml-auto flex shrink-0 items-center gap-1.5">
+              {xpData.streak > 0 && (
+                <span className="hidden items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 sm:flex">
+                  🔥 {xpData.streak}
+                </span>
+              )}
+              {xpData.todayXp > 0 && (
+                <span className="hidden items-center gap-1 rounded-full bg-primary/8 px-2 py-0.5 text-xs font-bold text-primary sm:flex">
+                  ⚡ {xpData.todayXp}
+                </span>
+              )}
+              <Button variant="ghost" size="icon" onClick={onToggleTheme} className="h-8 w-8" title="Toggle theme">
+                <SunMoon className="h-4 w-4" />
+              </Button>
+              <div className="hidden items-center gap-1 rounded-full border bg-white/60 px-2 py-1 text-xs font-medium dark:border-white/10 dark:bg-slate-950/55 md:flex">
+                <User className="h-3 w-3 text-primary" />
+                <span className="max-w-[64px] truncate">{auth.username}</span>
+              </div>
+              <Button variant="ghost" size="icon" onClick={onLogout} className="h-8 w-8" title="Logout">
+                <LogOut className="h-4 w-4" />
+              </Button>
+              {/* Mobile hamburger */}
+              <Button variant="ghost" size="icon" className="h-8 w-8 md:hidden" onClick={() => setMobMenu(v => !v)}>
+                {mobMenu ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+
+          {/* Mobile dropdown */}
           {mobMenu && (
-            <div className="absolute inset-x-0 top-full z-50 animate-fade-down border-b bg-white/95 p-3 shadow-sm backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/90 md:hidden">
+            <div className="absolute inset-x-0 top-full z-50 animate-fade-down border-b bg-white/95 p-3 shadow-md backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/90 md:hidden">
               <div className="mb-2 flex gap-0.5 rounded-md border bg-muted/30 p-0.5 dark:border-white/10">
                 {['all', ...levels].map(lv => (
                   <button key={lv} onClick={() => setLevelFilter(lv)}
@@ -928,11 +903,8 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
               </div>
               <div className="mt-2 flex items-center justify-between rounded-lg bg-muted/20 p-2">
                 <div className="flex items-center gap-1.5">
-                  <Button variant="ghost" size="icon" onClick={onToggleTheme} className="h-7 w-7">
-                    <SunMoon className="h-3 w-3" />
-                  </Button>
-                  <div className="grid h-6 w-6 place-items-center rounded-full bg-primary/8 text-primary"><User className="h-3 w-3" /></div>
                   <span className="text-xs font-medium">{auth.username}</span>
+                  {xpData.streak > 0 && <span className="text-xs">🔥{xpData.streak}</span>}
                 </div>
                 <Button variant="ghost" size="sm" onClick={onLogout} className="h-7 text-xs"><LogOut className="h-3 w-3" /> Logout</Button>
               </div>
@@ -942,6 +914,27 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-4 pb-24 pt-4 md:pb-8 md:px-6">
+          {/* Chapter + level selector bar (desktop, below header) */}
+          <div className="mx-auto mb-4 hidden max-w-7xl items-center gap-2 md:flex">
+            <div className="flex gap-0.5 rounded-md border bg-white/70 p-0.5 dark:border-white/10 dark:bg-slate-950/50">
+              {['all', ...levels].map(lv => (
+                <button key={lv} onClick={() => setLevelFilter(lv)}
+                  className={cn('rounded px-2.5 py-1 text-[11px] font-bold uppercase transition-all',
+                    levelFilter === lv ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+                  {lv === 'all' ? 'All' : lv}
+                </button>
+              ))}
+            </div>
+            <Select value={selId} onValueChange={setSelId}>
+              <SelectTrigger className="h-8 w-[180px] bg-white/70 text-xs dark:border-white/10 dark:bg-slate-950/50"><SelectValue /></SelectTrigger>
+              <SelectContent>{visibleChapters.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}</SelectContent>
+            </Select>
+            <div className="ml-auto hidden items-center gap-2 rounded-full border bg-white/60 px-3 py-1 lg:flex dark:border-white/10 dark:bg-slate-950/50">
+              <span className="text-[10px] text-muted-foreground">Progress</span>
+              <Progress value={pct} className="h-1.5 w-20" />
+              <span className="text-[10px] font-bold text-primary">{pct}%</span>
+            </div>
+          </div>
           <div className="mx-auto flex max-w-6xl flex-col gap-4">
             {error && <div className="animate-fade-up rounded-lg border border-destructive/20 bg-destructive/8 p-3 text-xs font-medium text-destructive">{error}</div>}
             {loading && (
