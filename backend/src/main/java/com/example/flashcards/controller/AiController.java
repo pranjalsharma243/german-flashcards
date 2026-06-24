@@ -2,19 +2,24 @@ package com.example.flashcards.controller;
 
 import com.example.flashcards.model.AiHintResponse;
 import com.example.flashcards.model.AiSentenceResponse;
+import com.example.flashcards.model.ChatRequest;
+import com.example.flashcards.model.ChatResponse;
 import com.example.flashcards.model.HintRequest;
 import com.example.flashcards.repository.CardRepository;
 import com.example.flashcards.service.AiService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.util.NoSuchElementException;
 
 @RestController
@@ -38,6 +43,39 @@ public class AiController {
                 request.cardId(), request.word(), request.article(),
                 request.english(), request.hindi(), request.wrongAnswer()
         );
+    }
+
+    @PostMapping("/chat")
+    public ChatResponse chat(@Valid @RequestBody ChatRequest request) {
+        return aiService.chat(request.messages(), request.chapterContext());
+    }
+
+    @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter chatStream(@Valid @RequestBody ChatRequest request) {
+        SseEmitter emitter = new SseEmitter(120_000L);
+        var subscription = aiService.chatStream(request.messages(), request.chapterContext())
+                .subscribe(
+                        chunk -> {
+                            try {
+                                emitter.send(SseEmitter.event().data(chunk));
+                            } catch (IOException e) {
+                                emitter.completeWithError(e);
+                            }
+                        },
+                        emitter::completeWithError,
+                        () -> {
+                            try {
+                                emitter.send(SseEmitter.event().data("[DONE]"));
+                                emitter.complete();
+                            } catch (IOException e) {
+                                emitter.completeWithError(e);
+                            }
+                        }
+                );
+        emitter.onCompletion(subscription::dispose);
+        emitter.onTimeout(() -> { subscription.dispose(); emitter.complete(); });
+        emitter.onError(e -> subscription.dispose());
+        return emitter;
     }
 
     @GetMapping("/sentence/{cardId}")

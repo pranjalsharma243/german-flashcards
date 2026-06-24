@@ -3,11 +3,18 @@ package com.example.flashcards.service;
 import com.example.flashcards.model.AiHintResponse;
 import com.example.flashcards.model.AiSentenceResponse;
 import com.example.flashcards.model.Card;
+import com.example.flashcards.model.ChatMessage;
+import com.example.flashcards.model.ChatResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
@@ -18,6 +25,8 @@ import org.springframework.util.MimeType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.ai.chat.model.ChatModel;
+import reactor.core.publisher.Flux;
 
 @Service
 public class AiService {
@@ -25,19 +34,83 @@ public class AiService {
     private static final Logger log = LoggerFactory.getLogger(AiService.class);
 
     private final ChatClient chatClient;
+    private final ChatModel chatModel;
     private final ObjectMapper objectMapper;
     private final boolean enabled;
 
+    private static final String TUTOR_SYSTEM_PROMPT = """
+            You are "Deutschi", a friendly and encouraging German language tutor chatbot.
+            Your job is to help students learn German vocabulary, grammar, and conversation.
+
+            Guidelines:
+            - Be warm, encouraging, and patient
+            - Keep responses concise and clear (2-4 sentences unless the topic needs more detail)
+            - Use emojis occasionally to make learning fun
+            - When explaining German words, always show: word, article (if noun), English meaning, and an example sentence
+            - For grammar rules, give the rule + 1-2 short examples
+            - If the student writes in Hindi, respond in Hindi + German explanations
+            - If they write in English, respond in English + German explanations
+            - You can quiz the user if they ask
+            - Format German words in bold by wrapping them like **word**
+            - Help with: vocabulary, der/die/das articles, cases (Nominativ/Akkusativ/Dativ), verb conjugation, sentence structure, pronunciation tips
+            """;
+
     public AiService(
             ChatClient.Builder chatClientBuilder,
+            ChatModel chatModel,
             ObjectMapper objectMapper,
             @Value("${spring.ai.openai.api-key:disabled}") String apiKey
     ) {
+        this.chatModel = chatModel;
         this.objectMapper = objectMapper;
         this.enabled = !apiKey.isBlank() && !apiKey.equals("disabled");
         this.chatClient = chatClientBuilder
                 .defaultSystem("You are a concise German language tutor helping students memorize vocabulary.")
                 .build();
+    }
+
+    public ChatResponse chat(List<ChatMessage> messages, String chapterContext) {
+        if (!enabled) return new ChatResponse("AI tutor is not available right now. Please check your API configuration.");
+        try {
+            List<Message> springMessages = buildTutorMessages(messages, chapterContext);
+            String reply = chatModel.call(new Prompt(springMessages)).getResult().getOutput().getText();
+            return new ChatResponse(reply != null ? reply.trim() : "Entschuldigung, I could not understand that. Please try again.");
+        } catch (Exception e) {
+            log.warn("Chat failed: {}", e.getMessage());
+            return new ChatResponse("Sorry, something went wrong. Please try again!");
+        }
+    }
+
+    public Flux<String> chatStream(List<ChatMessage> messages, String chapterContext) {
+        if (!enabled) return Flux.just("AI tutor is not available right now.");
+        try {
+            List<Message> springMessages = buildTutorMessages(messages, chapterContext);
+            return chatModel.stream(new Prompt(springMessages))
+                    .mapNotNull(r -> r.getResult())
+                    .mapNotNull(r -> r.getOutput())
+                    .mapNotNull(r -> r.getText())
+                    .filter(s -> !s.isEmpty())
+                    .onErrorReturn("Sorry, something went wrong. Please try again!");
+        } catch (Exception e) {
+            log.warn("Chat stream failed: {}", e.getMessage());
+            return Flux.just("Sorry, something went wrong. Please try again!");
+        }
+    }
+
+    private List<Message> buildTutorMessages(List<ChatMessage> messages, String chapterContext) {
+        String systemPrompt = chapterContext != null && !chapterContext.isBlank()
+                ? TUTOR_SYSTEM_PROMPT + "\n\nCurrent study context: " + chapterContext
+                : TUTOR_SYSTEM_PROMPT;
+        List<Message> springMessages = new ArrayList<>();
+        springMessages.add(new SystemMessage(systemPrompt));
+        for (ChatMessage msg : messages) {
+            if ("user".equals(msg.role())) {
+                springMessages.add(new UserMessage(msg.content()));
+            } else if ("assistant".equals(msg.role())) {
+                springMessages.add(new AssistantMessage(msg.content()));
+            }
+        }
+        return springMessages;
     }
 
     @Cacheable(value = "ai-hints", key = "#cardId + ':' + #wrongAnswer")

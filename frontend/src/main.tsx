@@ -26,7 +26,8 @@ type ChapterSummary = Omit<Chapter, 'cards'> & { cardCount: number };
 type ProgressState = { chapterId: string; knownCardIds: string[]; practiceCardIds: string[]; updatedAt?: string };
 type AuthSession = { token: string; username: string; role: string };
 type ThemeMode = 'light' | 'dark';
-type Mode = 'dashboard' | 'cards' | 'quiz' | 'mcq' | 'articles' | 'grammar' | 'list' | 'admin' | 'contribute';
+type Mode = 'dashboard' | 'cards' | 'quiz' | 'mcq' | 'articles' | 'grammar' | 'list' | 'admin' | 'contribute' | 'chat';
+type ChatMsg = { role: 'user' | 'assistant'; content: string; ts: number };
 type VocabRequest = { id: number; submittedBy: string; status: string; sourceType: string; cards: CardItem[]; createdAt: string };
 type SrsEntry = { cardId: string; interval: number; nextReview: number; reps: number };
 type SrsData = Record<string, SrsEntry>;
@@ -559,6 +560,10 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
   const [xpData, setXpData] = React.useState<XpData>(() => loadXpData(auth.username));
   const [xpGain, setXpGain] = React.useState(0);
   const [showXpToast, setShowXpToast] = React.useState(false);
+  const [chatMessages, setChatMessages] = React.useState<ChatMsg[]>([
+    { role: 'assistant', content: 'Hallo! 👋 Ich bin **Deutschi**, dein German tutor!\n\nAsk me anything about German — vocabulary, grammar, articles (der/die/das), or just chat in German. I can also quiz you on your flashcard vocabulary!\n\n**Try asking:**\n- "Explain der/die/das"\n- "Quiz me on 5 words"\n- "How do I use Akkusativ?"', ts: Date.now() }
+  ]);
+  const [chatLoading, setChatLoading] = React.useState(false);
 
   React.useEffect(() => {
     setLoading(true);
@@ -799,6 +804,7 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
     { v: 'articles', icon: <GraduationCap className="h-4 w-4" />, l: 'Articles' },
     { v: 'grammar', icon: <PenLine className="h-4 w-4" />, l: 'Grammar' },
     { v: 'list', icon: <Library className="h-4 w-4" />, l: 'Library' },
+    { v: 'chat', icon: <MessageSquare className="h-4 w-4" />, l: 'AI Chat' },
     { v: 'contribute', icon: <Upload className="h-4 w-4" />, l: 'Contribute' },
     ...(auth.role === 'ADMIN' ? [{ v: 'admin' as Mode, icon: <Settings className="h-4 w-4" />, l: 'Admin' }] : []),
   ];
@@ -1633,6 +1639,18 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
             {!loading && mode === 'contribute' && (
               <ContributePanel token={auth.token} />
             )}
+
+            {/* AI Chat */}
+            {mode === 'chat' && (
+              <ChatView
+                token={auth.token}
+                messages={chatMessages}
+                setMessages={setChatMessages}
+                loading={chatLoading}
+                setLoading={setChatLoading}
+                chapterContext={chapter ? `Chapter: "${chapter.title} - ${chapter.theme}" (Level ${chapter.level}). Vocabulary includes words like: ${chapter.cards.slice(0, 8).map(c => `${c.article ? c.article + ' ' : ''}${c.word} (${c.english})`).join(', ')}.` : undefined}
+              />
+            )}
           </div>
         </div>
 
@@ -2433,6 +2451,236 @@ function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: 
 }
 
 /* ═══════════════ CONTRIBUTE PANEL ═══════════════ */
+
+/* ═══════════════ CHAT VIEW ═══════════════ */
+
+function renderMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n- /g, '\n• ')
+    .replace(/\n/g, '<br/>');
+}
+
+const CHAT_SUGGESTIONS = [
+  'Explain der/die/das articles',
+  'Quiz me on 5 vocabulary words',
+  'How do I use Akkusativ case?',
+  'Give me tips for remembering German genders',
+  'Explain present tense verb conjugation',
+  'What is the difference between haben and sein?',
+];
+
+function ChatView({
+  token, messages, setMessages, loading, setLoading, chapterContext,
+}: {
+  token: string;
+  messages: ChatMsg[];
+  setMessages: React.Dispatch<React.SetStateAction<ChatMsg[]>>;
+  loading: boolean;
+  setLoading: (v: boolean) => void;
+  chapterContext?: string;
+}) {
+  const [input, setInput] = React.useState('');
+  const [streaming, setStreaming] = React.useState(false);
+  const bottomRef = React.useRef<HTMLDivElement>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  async function sendMessage(text: string) {
+    const userMsg = text.trim();
+    if (!userMsg || loading || streaming) return;
+    setInput('');
+
+    const userMessages: ChatMsg[] = [...messages, { role: 'user', content: userMsg, ts: Date.now() }];
+    // Add empty assistant placeholder immediately
+    const withPlaceholder: ChatMsg[] = [...userMessages, { role: 'assistant', content: '', ts: Date.now() }];
+    setMessages(withPlaceholder);
+    setLoading(true);
+
+    try {
+      const payload = {
+        messages: userMessages.slice(-12).map(m => ({ role: m.role, content: m.content })),
+        chapterContext: chapterContext ?? null,
+      };
+      const res = await fetch(`${API}/ai/chat/stream`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok || !res.body) throw new Error('Stream failed');
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let accumulated = '';
+      let firstChunk = true;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // SSE events are separated by \n\n
+        const events = buffer.split('\n\n');
+        buffer = events.pop() ?? '';
+
+        for (const event of events) {
+          // SSE spec: strip "data:" then ONE optional space — but Spring sends value directly
+          // after "data:" with no added space, so we slice(5) to preserve token's own leading space
+          const dataLines = event.split('\n')
+            .filter(line => line.startsWith('data:'))
+            .map(line => line.slice(5));
+          const data = dataLines.join('\n');
+          if (data === '' || data === '[DONE]') continue;
+
+          if (firstChunk) {
+            firstChunk = false;
+            setLoading(false);
+            setStreaming(true);
+          }
+          accumulated += data;
+          setMessages(prev => {
+            const updated = [...prev];
+            updated[updated.length - 1] = { ...updated[updated.length - 1], content: accumulated };
+            return updated;
+          });
+        }
+      }
+    } catch {
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { ...updated[updated.length - 1], content: 'Network error. Please check your connection.' };
+        return updated;
+      });
+    } finally {
+      setLoading(false);
+      setStreaming(false);
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }
+
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    sendMessage(input);
+  }
+
+  const isWaiting = loading && !streaming;
+  const lastMsg = messages[messages.length - 1];
+  const showTypingDots = isWaiting || (loading && lastMsg?.role === 'assistant' && lastMsg.content === '');
+  const streamingMsgIdx = streaming ? messages.length - 1 : -1;
+
+  return (
+    <div className="animate-fade-up flex flex-col gap-3">
+      {/* Header */}
+      <div className="flex items-center gap-3 rounded-xl border bg-gradient-to-r from-primary/8 to-accent/8 p-4">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary text-white shadow-glow">
+          <MessageSquare className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <h2 className="font-bold">Deutschi — AI German Tutor</h2>
+          <p className="text-xs text-muted-foreground truncate">
+            {streaming ? '✦ Typing…' : chapterContext ? 'Context: ' + chapterContext.slice(0, 55) + '…' : 'Ask me anything about German!'}
+          </p>
+        </div>
+        <button
+          onClick={() => { if (!loading && !streaming) setMessages([{ role: 'assistant', content: 'Hallo! 👋 Ich bin **Deutschi**, dein German tutor!\n\nAsk me anything about German — vocabulary, grammar, articles (der/die/das), or just chat in German. I can also quiz you on your flashcard vocabulary!\n\n**Try asking:**\n- "Explain der/die/das"\n- "Quiz me on 5 words"\n- "How do I use Akkusativ?"', ts: Date.now() }]); }}
+          disabled={loading || streaming}
+          className="ml-auto shrink-0 rounded-lg border bg-white/60 px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 dark:border-white/10 dark:bg-slate-950/55"
+        >
+          Clear
+        </button>
+      </div>
+
+      {/* Messages */}
+      <div className="glass-panel rounded-xl overflow-hidden">
+        <div className="flex flex-col gap-3 p-4 min-h-[400px] max-h-[520px] overflow-y-auto">
+          {messages.map((msg, i) => {
+            const isStreamingThis = i === streamingMsgIdx && streaming;
+            return (
+              <div key={i} className={cn('flex gap-2.5', msg.role === 'user' ? 'flex-row-reverse' : 'flex-row')}>
+                <div className={cn(
+                  'grid h-7 w-7 shrink-0 place-items-center rounded-full text-[11px] font-bold',
+                  msg.role === 'user'
+                    ? 'bg-primary text-white'
+                    : 'bg-gradient-to-br from-secondary to-accent text-white'
+                )}>
+                  {msg.role === 'user' ? <User className="h-3.5 w-3.5" /> : '🤖'}
+                </div>
+                <div className={cn(
+                  'max-w-[80%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed',
+                  msg.role === 'user'
+                    ? 'bg-primary text-white rounded-tr-sm'
+                    : 'bg-white border dark:bg-slate-900 dark:border-white/10 rounded-tl-sm',
+                  msg.role === 'assistant' && msg.content === '' ? 'hidden' : ''
+                )}>
+                  {msg.role === 'assistant'
+                    ? <span dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) + (isStreamingThis ? '<span style="display:inline-block;width:2px;height:1em;background:currentColor;margin-left:1px;vertical-align:text-bottom;animation:blink-cursor 0.7s step-end infinite">​</span>' : '') }} />
+                    : msg.content
+                  }
+                </div>
+              </div>
+            );
+          })}
+          {showTypingDots && (
+            <div className="flex gap-2.5">
+              <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gradient-to-br from-secondary to-accent text-white text-[11px] font-bold">🤖</div>
+              <div className="flex items-center gap-1.5 rounded-xl rounded-tl-sm border bg-white px-4 py-3 dark:bg-slate-900 dark:border-white/10">
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary" style={{ animationDelay: '0ms' }} />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary" style={{ animationDelay: '150ms' }} />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary" style={{ animationDelay: '300ms' }} />
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Suggestions */}
+        {messages.length <= 1 && !loading && !streaming && (
+          <div className="border-t px-4 py-3 dark:border-white/10">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Quick Questions</p>
+            <div className="flex flex-wrap gap-1.5">
+              {CHAT_SUGGESTIONS.map(s => (
+                <button
+                  key={s}
+                  onClick={() => sendMessage(s)}
+                  className="rounded-full border bg-muted/30 px-3 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-primary/8 hover:text-primary dark:border-white/10"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Input */}
+        <div className="border-t p-3 dark:border-white/10">
+          <form onSubmit={onSubmit} className="flex gap-2">
+            <Input
+              ref={inputRef}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              placeholder={streaming ? 'Deutschi is typing…' : 'Ask about German grammar, vocabulary, or chat in German…'}
+              className="flex-1 text-sm"
+              disabled={loading || streaming}
+              maxLength={500}
+            />
+            <Button type="submit" disabled={!input.trim() || loading || streaming} size="sm" className="shrink-0 px-4">
+              {(loading || streaming) ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <ArrowRight className="h-4 w-4" />}
+            </Button>
+          </form>
+          <p className="mt-1.5 text-[10px] text-muted-foreground">
+            {streaming ? '✦ Streaming response…' : 'Powered by OpenAI GPT-4o · Real-time streaming'}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ContributePanel({ token }: { token: string }) {
   const [file, setFile] = React.useState<File | null>(null);
