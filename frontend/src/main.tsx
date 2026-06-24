@@ -664,13 +664,16 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
       .then(r => { if (!r.ok) throw new Error(); return r.json(); }).then(setProgress)
       .catch(ex => apiErr(ex, () => setError('Save failed.')));
   }
-  function mark(id: string, s: 'known' | 'practice') {
+  function updateProgress(id: string, s: 'known' | 'practice') {
     const nk = new Set(progress.knownCardIds), np = new Set(progress.practiceCardIds);
     if (s === 'known') {
       if (!nk.has(id)) awardXp(10);
       nk.add(id); np.delete(id);
     } else { np.add(id); nk.delete(id); }
-    saveProg({ ...progress, knownCardIds: [...nk], practiceCardIds: [...np] }); next();
+    saveProg({ ...progress, knownCardIds: [...nk], practiceCardIds: [...np] });
+  }
+  function mark(id: string, s: 'known' | 'practice') {
+    updateProgress(id, s); next();
   }
   function resetCard() { setIdx(0); setFlipped(false); setQInput(''); setQResult('idle'); setQScore({ correct: 0, total: 0 }); setCorrectStreak(0); setArticleIdx(0); setArticleScore({ correct: 0, total: 0 }); setArticleFeedback(null); setMcqSelected(null); setMcqResult('idle'); setMcqScore({ correct: 0, total: 0 }); setGramIdx(0); setGramScore({ correct: 0, total: 0 }); setGramInput(''); setGramResult('idle'); setGramSentence(null); }
   function next() { setIdx(i => filtered.length ? (i + 1) % filtered.length : 0); setFlipped(false); setQInput(''); setQResult('idle'); setAiHint(null); }
@@ -707,7 +710,7 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
     const correct = nouns[articleIdx].article === chosen;
     setArticleFeedback({ answer: chosen, correct });
     setArticleScore(s => ({ correct: s.correct + (correct ? 1 : 0), total: s.total + 1 }));
-    if (correct) mark(nouns[articleIdx].id, 'known');
+    if (correct) updateProgress(nouns[articleIdx].id, 'known');
   }
   function articleNext() {
     setArticleFeedback(null);
@@ -722,8 +725,8 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
     setMcqResult(isCorrect ? 'correct' : 'wrong');
     setMcqScore(s => ({ correct: s.correct + (isCorrect ? 1 : 0), total: s.total + 1 }));
     setCorrectStreak(s => isCorrect ? s + 1 : 0);
-    if (isCorrect) mark(cur!.id, 'known');
-    else mark(cur!.id, 'practice');
+    if (isCorrect) updateProgress(cur!.id, 'known');
+    else updateProgress(cur!.id, 'practice');
   }
 
   function mcqNext() { setMcqSelected(null); setMcqResult('idle'); setAiHint(null); next(); }
