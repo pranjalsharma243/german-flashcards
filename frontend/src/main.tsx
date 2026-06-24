@@ -3003,6 +3003,21 @@ function StoryView({ token, chapter }: { token: string; chapter: Chapter | null 
   const [loading, setLoading] = React.useState(false);
   const [showTranslation, setShowTranslation] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [selectedWords, setSelectedWords] = React.useState<Set<string>>(new Set());
+  const [showWordPicker, setShowWordPicker] = React.useState(false);
+
+  const allCards = chapter?.cards ?? [];
+  const hasSelection = selectedWords.size > 0;
+
+  function toggleWord(id: string) {
+    setSelectedWords(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() { setSelectedWords(new Set()); }
 
   async function generateStory() {
     if (!chapter) return;
@@ -3011,11 +3026,10 @@ function StoryView({ token, chapter }: { token: string; chapter: Chapter | null 
     setStoryData(null);
     setShowTranslation(false);
     try {
-      const words = chapter.cards.slice(0, 30).map(c => ({
-        word: c.word,
-        article: c.article ?? null,
-        english: c.english,
-      }));
+      const source = hasSelection
+        ? allCards.filter(c => selectedWords.has(c.id))
+        : allCards.slice(0, 30);
+      const words = source.map(c => ({ word: c.word, article: c.article ?? null, english: c.english }));
       const res = await fetch(`${API}/ai/story`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -3041,15 +3055,83 @@ function StoryView({ token, chapter }: { token: string; chapter: Chapter | null 
         <div className="min-w-0 flex-1">
           <h2 className="font-bold">AI Story Generator</h2>
           <p className="text-xs text-muted-foreground">
-            {chapter ? `Using vocabulary from "${chapter.title}"` : 'Select a chapter first to generate a story'}
+            {chapter
+              ? hasSelection
+                ? `Using ${selectedWords.size} selected word${selectedWords.size > 1 ? 's' : ''} from "${chapter.title}"`
+                : `Using all vocabulary from "${chapter.title}"`
+              : 'Select a chapter first to generate a story'}
           </p>
         </div>
         {chapter && (
           <Button onClick={generateStory} disabled={loading} size="sm" className="shrink-0 gap-1.5">
-            {loading ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />Generating…</> : <><Sparkles className="h-3.5 w-3.5" />Generate</>}
+            {loading
+              ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />Generating…</>
+              : <><Sparkles className="h-3.5 w-3.5" />Generate</>}
           </Button>
         )}
       </div>
+
+      {/* Word picker */}
+      {chapter && (
+        <div className="glass-panel rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold">Word Selection</h3>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">optional</span>
+              {hasSelection && (
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                  {selectedWords.size} selected
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5">
+              {hasSelection && (
+                <button onClick={clearSelection}
+                  className="rounded-lg border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-destructive dark:border-white/10">
+                  Clear
+                </button>
+              )}
+              <button onClick={() => setShowWordPicker(v => !v)}
+                className="flex items-center gap-1 rounded-lg border bg-white/60 px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground dark:border-white/10 dark:bg-slate-950/55">
+                {showWordPicker ? <ChevronDown className="h-3 w-3 rotate-180 transition-transform" /> : <ChevronDown className="h-3 w-3 transition-transform" />}
+                {showWordPicker ? 'Hide' : 'Choose words'}
+              </button>
+            </div>
+          </div>
+          {!showWordPicker && !hasSelection && (
+            <p className="text-xs text-muted-foreground">Leave blank to use all chapter words, or pick specific ones.</p>
+          )}
+          {!showWordPicker && hasSelection && (
+            <div className="flex flex-wrap gap-1.5">
+              {allCards.filter(c => selectedWords.has(c.id)).map(c => (
+                <span key={c.id} className="story-highlight rounded-full px-2.5 py-0.5 text-xs font-medium">
+                  {c.article ? `${c.article} ` : ''}{c.word}
+                </span>
+              ))}
+            </div>
+          )}
+          {showWordPicker && (
+            <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+              {allCards.map(c => {
+                const sel = selectedWords.has(c.id);
+                return (
+                  <button key={c.id} onClick={() => toggleWord(c.id)}
+                    title={c.english}
+                    className={cn(
+                      'rounded-full border px-2.5 py-0.5 text-xs font-medium transition-all',
+                      sel
+                        ? 'story-highlight border-primary/30'
+                        : 'border-border bg-white/60 text-muted-foreground hover:border-primary/40 hover:text-foreground dark:border-white/10 dark:bg-slate-950/40'
+                    )}>
+                    {c.article ? `${c.article} ` : ''}{c.word}
+                    {sel && <Check className="ml-1 inline h-3 w-3" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* No chapter selected */}
       {!chapter && (
