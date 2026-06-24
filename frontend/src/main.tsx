@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   ArrowLeft, ArrowRight, BarChart3, BookOpen, Brain, Check, ChevronDown, ChevronRight,
-  FileText, Filter, Globe, GraduationCap, Headphones, Languages, LayoutDashboard,
+  Eye, EyeOff, FileText, Filter, Globe, GraduationCap, Headphones, Languages, LayoutDashboard,
   Library, LogOut, Menu, MessageSquare, PenLine, PlayCircle, Plus, RotateCcw, Save, Search, Settings, Sparkles, Star,
   SunMoon, Target, Trash2, TrendingUp, Trophy, Upload, User, Volume2, X, Zap,
 } from 'lucide-react';
@@ -29,6 +29,7 @@ type ThemeMode = 'light' | 'dark';
 type Mode = 'dashboard' | 'cards' | 'quiz' | 'mcq' | 'articles' | 'grammar' | 'list' | 'admin';
 type SrsEntry = { cardId: string; interval: number; nextReview: number; reps: number };
 type SrsData = Record<string, SrsEntry>;
+type XpData = { xp: number; streak: number; lastStudyDate: string; todayXp: number };
 type AnswerLanguage = 'english' | 'hindi';
 type AuthMode = 'login' | 'register';
 type AppView = 'landing' | 'auth' | 'app';
@@ -121,9 +122,9 @@ function LandingPage({ onLogin, onRegister }: { onLogin: () => void; onRegister:
                 <Button onClick={onRegister}><Zap className="h-4 w-4" /> Start Learning Free</Button>
                 <Button variant="outline" onClick={onLogin}>I have an account</Button>
               </div>
-              <div className="mt-8 flex flex-wrap gap-4 animate-fade-up stagger-4">
-                {['100+ Words', 'Voice Pronunciation', 'Hindi & English'].map(t => (
-                  <span key={t} className="flex items-center gap-1.5 text-xs text-muted-foreground"><Check className="h-3.5 w-3.5 text-accent" />{t}</span>
+              <div className="mt-8 flex flex-wrap gap-3 animate-fade-up stagger-4">
+                {[{ label: 'Vocabulary chapters', icon: <BookOpen className="h-3.5 w-3.5" /> }, { label: 'Voice pronunciation', icon: <Volume2 className="h-3.5 w-3.5" /> }, { label: 'XP & streak system', icon: <Zap className="h-3.5 w-3.5" /> }].map(t => (
+                  <span key={t.label} className="flex items-center gap-1.5 rounded-full border bg-white/70 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm dark:border-white/10 dark:bg-slate-900/60">{t.icon}{t.label}</span>
                 ))}
               </div>
             </div>
@@ -155,6 +156,30 @@ function LandingPage({ onLogin, onRegister }: { onLogin: () => void; onRegister:
           </div>
         </div>
       </section>
+
+      {/* Stats bar */}
+      <div className="border-y bg-muted/30 dark:bg-slate-900/40">
+        <div className="mx-auto max-w-6xl px-5 py-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {[
+              { value: '5', label: 'Learning Modes', icon: <Brain className="h-4 w-4 text-primary" /> },
+              { value: '🔥', label: 'Daily Streaks', icon: null },
+              { value: '⚡', label: 'XP Rewards', icon: null },
+              { value: '2', label: 'Translations (HI/EN)', icon: <Globe className="h-4 w-4 text-accent" /> },
+            ].map(s => (
+              <div key={s.label} className="flex items-center gap-3">
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white shadow-sm dark:bg-slate-900">
+                  {s.icon ?? <span className="text-lg leading-none">{s.value}</span>}
+                </div>
+                <div>
+                  {s.icon && <p className="text-sm font-bold">{s.value}</p>}
+                  <p className="text-[11px] text-muted-foreground">{s.label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
       {/* Features */}
       <section id="features" className="py-20">
@@ -264,13 +289,15 @@ function LandingPage({ onLogin, onRegister }: { onLogin: () => void; onRegister:
           <div className="relative rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-10 text-white shadow-glow-lg overflow-hidden md:p-14">
             <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-primary/20 blur-[60px] animate-float" />
             <div className="pointer-events-none absolute -bottom-16 -left-16 h-40 w-40 rounded-full bg-accent/15 blur-[60px] animate-float stagger-4" />
-            <div className="relative text-center max-w-lg mx-auto">
+            <div className="relative text-center max-w-xl mx-auto">
+              <div className="mb-4 flex justify-center gap-3 text-3xl">🔥⚡🎯</div>
               <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Ready to master German?</h2>
-              <p className="mt-3 text-sm text-white/60">Join now — it's free.</p>
+              <p className="mt-3 text-sm text-white/60">Free forever. Study anytime. Track your progress with XP and streaks.</p>
               <div className="mt-6 flex flex-wrap justify-center gap-3">
-                <Button onClick={onRegister} className="bg-primary hover:bg-primary/90"><Zap className="h-4 w-4" /> Create Free Account</Button>
-                <Button variant="glass" onClick={onLogin}>Sign In</Button>
+                <Button size="lg" onClick={onRegister} className="bg-accent text-white hover:bg-accent/90 font-bold shadow-glow"><Zap className="h-5 w-5" /> Start for Free</Button>
+                <Button variant="glass" size="lg" onClick={onLogin}>I have an account</Button>
               </div>
+              <p className="mt-4 text-[11px] text-white/30">No credit card required</p>
             </div>
           </div>
         </div>
@@ -296,12 +323,49 @@ function AuthScreen({ initialMode, onSuccess, onBack }: { initialMode: AuthMode;
   const [mode, setMode] = React.useState(initialMode);
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [confirmPass, setConfirmPass] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [touched, setTouched] = React.useState({ username: false, password: false, confirmPass: false });
+  const [showPassword, setShowPassword] = React.useState(false);
+  const emailRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => { emailRef.current?.focus(); }, [mode]);
+
+  function computeErrors(t = touched) {
+    const errs: { username?: string; password?: string; confirmPass?: string } = {};
+    if (t.username) {
+      if (!username.trim()) errs.username = 'Email is required';
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username)) errs.username = 'Enter a valid email address';
+    }
+    if (t.password) {
+      if (!password) errs.password = 'Password is required';
+      else if (password.length < 6) errs.password = `At least 6 characters (${password.length}/6)`;
+    }
+    if (mode === 'register' && t.confirmPass && password !== confirmPass) {
+      errs.confirmPass = 'Passwords do not match';
+    }
+    return errs;
+  }
+
+  const fieldErrors = computeErrors();
+
+  function touch(field: keyof typeof touched) {
+    setTouched(t => ({ ...t, [field]: true }));
+  }
+
+  function switchMode(m: AuthMode) {
+    setMode(m); setError(''); setConfirmPass('');
+    setTouched({ username: false, password: false, confirmPass: false });
+  }
 
   function submit(e: React.FormEvent) {
-    e.preventDefault(); setLoading(true); setError('');
-    fetch(`${API}/auth/${mode}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) })
+    e.preventDefault();
+    const allTouched = { username: true, password: true, confirmPass: true };
+    const errs = computeErrors(allTouched);
+    if (Object.keys(errs).length > 0) { setTouched(allTouched); return; }
+    setLoading(true); setError('');
+    fetch(`${API}/auth/${mode}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: username.trim(), password }) })
       .then(async r => {
         if (!r.ok) {
           const data = await r.json().catch(() => ({ message: 'Auth failed', errors: [] as string[] }));
@@ -310,10 +374,14 @@ function AuthScreen({ initialMode, onSuccess, onBack }: { initialMode: AuthMode;
         }
         return r.json() as Promise<AuthSession>;
       })
-      .then(s => { setPassword(''); onSuccess(s); })
+      .then(s => { setPassword(''); setConfirmPass(''); onSuccess(s); })
       .catch(ex => setError(ex instanceof Error && ex.message ? ex.message : 'Auth failed'))
       .finally(() => setLoading(false));
   }
+
+  const pwStrength = password.length === 0 ? 0 : password.length < 6 ? 1 : password.length < 10 ? 2 : 3;
+  const pwStrengthLabel = ['', 'Too short', 'Almost there', 'Strong'][pwStrength];
+  const pwStrengthColor = ['', 'bg-destructive', 'bg-secondary', 'bg-accent'][pwStrength];
 
   return (
     <main className="auth-bg grid min-h-dvh place-items-center p-4">
@@ -328,25 +396,118 @@ function AuthScreen({ initialMode, onSuccess, onBack }: { initialMode: AuthMode;
         </div>
         <Card className="glass-panel-strong rounded-xl">
           <CardContent className="grid gap-5 p-6">
-            <Tabs value={mode} onValueChange={v => setMode(v as AuthMode)}>
+            <Tabs value={mode} onValueChange={v => switchMode(v as AuthMode)}>
               <TabsList className="grid w-full grid-cols-2"><TabsTrigger value="login">Sign In</TabsTrigger><TabsTrigger value="register">Sign Up</TabsTrigger></TabsList>
             </Tabs>
             <div>
               <h2 className="text-lg font-bold">{mode === 'login' ? 'Welcome back' : 'Create account'}</h2>
-              <p className="mt-0.5 text-xs text-muted-foreground">{mode === 'login' ? 'Continue your learning' : 'Start learning German'}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{mode === 'login' ? 'Continue your learning' : 'Start learning German for free'}</p>
             </div>
-            <form className="grid gap-4" onSubmit={submit}>
-              <label className="grid gap-1.5"><span className="text-xs font-medium">Email</span><Input type="email" value={username} onChange={e => setUsername(e.target.value)} maxLength={80} autoComplete="email" required placeholder="your@email.com" /></label>
-              <label className="grid gap-1.5"><span className="text-xs font-medium">Password</span><Input type="password" value={password} onChange={e => setPassword(e.target.value)} minLength={6} maxLength={120} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required placeholder="Your password" /></label>
+            <form className="grid gap-3" onSubmit={submit}>
+              <div className="grid gap-1.5">
+                <label className="text-xs font-medium" htmlFor="auth-email">Email</label>
+                <Input
+                  id="auth-email"
+                  ref={emailRef}
+                  type="email"
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
+                  onBlur={() => touch('username')}
+                  maxLength={80}
+                  autoComplete="email"
+                  placeholder="your@email.com"
+                  className={cn(
+                    touched.username && fieldErrors.username ? 'border-destructive focus-visible:ring-destructive/40' :
+                    touched.username && !fieldErrors.username && username ? 'border-accent focus-visible:ring-accent/40' : ''
+                  )}
+                />
+                {touched.username && fieldErrors.username && (
+                  <p className="flex animate-fade-up items-center gap-1 text-[11px] text-destructive">
+                    <X className="h-3 w-3 shrink-0" />{fieldErrors.username}
+                  </p>
+                )}
+              </div>
+              <div className="grid gap-1.5">
+                <label className="text-xs font-medium" htmlFor="auth-password">Password</label>
+                <div className="relative">
+                  <Input
+                    id="auth-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    onBlur={() => touch('password')}
+                    maxLength={120}
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                    placeholder={mode === 'login' ? 'Your password' : 'At least 6 characters'}
+                    className={cn(
+                      'pr-10',
+                      touched.password && fieldErrors.password ? 'border-destructive focus-visible:ring-destructive/40' :
+                      touched.password && !fieldErrors.password && password ? 'border-accent focus-visible:ring-accent/40' : ''
+                    )}
+                  />
+                  <button type="button" tabIndex={-1} onClick={() => setShowPassword(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {mode === 'register' && password && (
+                  <div className="grid gap-1">
+                    <div className="flex gap-1">
+                      {[1, 2, 3].map(i => (
+                        <div key={i} className={cn('h-1 flex-1 rounded-full transition-all duration-300', i <= pwStrength ? pwStrengthColor : 'bg-muted')} />
+                      ))}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">{pwStrengthLabel}</span>
+                  </div>
+                )}
+                {touched.password && fieldErrors.password && (
+                  <p className="flex animate-fade-up items-center gap-1 text-[11px] text-destructive">
+                    <X className="h-3 w-3 shrink-0" />{fieldErrors.password}
+                  </p>
+                )}
+              </div>
+              {mode === 'register' && (
+                <div className="grid gap-1.5">
+                  <label className="text-xs font-medium" htmlFor="auth-confirm">Confirm Password</label>
+                  <div className="relative">
+                    <Input
+                      id="auth-confirm"
+                      type={showPassword ? 'text' : 'password'}
+                      value={confirmPass}
+                      onChange={e => setConfirmPass(e.target.value)}
+                      onBlur={() => touch('confirmPass')}
+                      maxLength={120}
+                      autoComplete="new-password"
+                      placeholder="Repeat your password"
+                      className={cn(
+                        'pr-10',
+                        touched.confirmPass && fieldErrors.confirmPass ? 'border-destructive focus-visible:ring-destructive/40' :
+                        touched.confirmPass && !fieldErrors.confirmPass && confirmPass ? 'border-accent focus-visible:ring-accent/40' : ''
+                      )}
+                    />
+                    <button type="button" tabIndex={-1} onClick={() => setShowPassword(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  {touched.confirmPass && fieldErrors.confirmPass && (
+                    <p className="flex animate-fade-up items-center gap-1 text-[11px] text-destructive">
+                      <X className="h-3 w-3 shrink-0" />{fieldErrors.confirmPass}
+                    </p>
+                  )}
+                </div>
+              )}
               {error && <div className="animate-fade-up rounded-lg border border-destructive/20 bg-destructive/8 p-2.5 text-xs font-medium text-destructive">{error}</div>}
-              <Button disabled={loading} className="w-full">
-                {loading ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> Wait...</> : <>{mode === 'login' ? 'Sign In' : 'Create Account'}<ChevronRight className="h-3.5 w-3.5" /></>}
+              <Button disabled={loading} className="mt-1 w-full">
+                {loading
+                  ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> Please wait...</>
+                  : <>{mode === 'login' ? 'Sign In' : 'Create Account'}<ChevronRight className="h-3.5 w-3.5" /></>}
               </Button>
             </form>
             <p className="text-center text-[11px] text-muted-foreground">
               {mode === 'login' ? "No account? " : 'Have an account? '}
-              <button className="font-medium text-primary hover:underline" onClick={() => setMode(mode === 'login' ? 'register' : 'login')} type="button">
-                {mode === 'login' ? 'Sign up' : 'Sign in'}
+              <button className="font-medium text-primary hover:underline" onClick={() => switchMode(mode === 'login' ? 'register' : 'login')} type="button">
+                {mode === 'login' ? 'Sign up free' : 'Sign in'}
               </button>
             </p>
           </CardContent>
@@ -381,6 +542,8 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
   const [mcqSelected, setMcqSelected] = React.useState<string | null>(null);
   const [mcqResult, setMcqResult] = React.useState<'idle' | 'correct' | 'wrong'>('idle');
   const [mcqScore, setMcqScore] = React.useState({ correct: 0, total: 0 });
+  const [qScore, setQScore] = React.useState({ correct: 0, total: 0 });
+  const [correctStreak, setCorrectStreak] = React.useState(0);
   const [gramIdx, setGramIdx] = React.useState(0);
   const [gramScore, setGramScore] = React.useState({ correct: 0, total: 0 });
   const [gramInput, setGramInput] = React.useState('');
@@ -389,6 +552,9 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [mobMenu, setMobMenu] = React.useState(false);
+  const [xpData, setXpData] = React.useState<XpData>(() => loadXpData(auth.username));
+  const [xpGain, setXpGain] = React.useState(0);
+  const [showXpToast, setShowXpToast] = React.useState(false);
 
   React.useEffect(() => {
     setLoading(true);
@@ -437,7 +603,59 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
     }
   }, [mode, idx, filtered.length, ansLang, reversed]);
 
+  const handlersRef = React.useRef({
+    next: () => {}, prev: () => {}, mark: (_id: string, _s: 'known' | 'practice') => {},
+    cur: null as CardItem | null, mode: 'dashboard' as Mode, flipped: false,
+    setFlipped: (_v: boolean | ((_: boolean) => boolean)) => {},
+    mcqOptions: [] as string[], mcqSelected: null as string | null,
+    answerMcq: (_opt: string) => {}, mcqNext: () => {},
+  });
+  React.useEffect(() => {
+    handlersRef.current = { next, prev, mark, cur, mode, flipped, setFlipped, mcqOptions, mcqSelected, answerMcq, mcqNext };
+  });
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const { next, prev, mark, cur, mode, setFlipped, mcqOptions, mcqSelected, answerMcq, mcqNext } = handlersRef.current;
+      if ((e.target as HTMLElement).closest('input,textarea,select')) return;
+      if (mode === 'cards') {
+        if ((e.target as HTMLElement).closest('button')) return;
+        if (e.key === 'ArrowRight') next();
+        else if (e.key === 'ArrowLeft') prev();
+        else if (e.key === ' ') { e.preventDefault(); setFlipped(v => !v); }
+        else if (e.key === 'k' && cur) mark(cur.id, 'known');
+        else if (e.key === 'p' && cur) mark(cur.id, 'practice');
+      } else if (mode === 'mcq') {
+        const num = parseInt(e.key);
+        if (num >= 1 && num <= mcqOptions.length && !mcqSelected) {
+          answerMcq(mcqOptions[num - 1]);
+        } else if ((e.key === 'Enter' || e.key === ' ') && mcqSelected) {
+          e.preventDefault(); mcqNext();
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   function apiErr(ex: unknown, fb: () => void) { if (ex instanceof AuthExpiredError) { onLogout(); return; } fb(); }
+  function awardXp(points: number) {
+    const today = new Date().toDateString();
+    setXpData(prev => {
+      const isNewDay = prev.lastStudyDate !== today;
+      const wasYesterday = prev.lastStudyDate === new Date(Date.now() - 86400000).toDateString();
+      const updated: XpData = {
+        xp: prev.xp + points,
+        streak: isNewDay ? (wasYesterday ? prev.streak + 1 : 1) : prev.streak,
+        lastStudyDate: today,
+        todayXp: isNewDay ? points : prev.todayXp + points,
+      };
+      saveXpData(auth.username, updated);
+      return updated;
+    });
+    setXpGain(points);
+    setShowXpToast(true);
+    setTimeout(() => setShowXpToast(false), 1600);
+  }
   function saveProg(np: ProgressState) {
     setProgress(np);
     fetch(`${API}/progress/${np.chapterId}`, { method: 'PUT', headers: hdrs(auth.token), body: JSON.stringify(np) })
@@ -446,23 +664,30 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
   }
   function mark(id: string, s: 'known' | 'practice') {
     const nk = new Set(progress.knownCardIds), np = new Set(progress.practiceCardIds);
-    if (s === 'known') { nk.add(id); np.delete(id); } else { np.add(id); nk.delete(id); }
+    if (s === 'known') {
+      if (!nk.has(id)) awardXp(10);
+      nk.add(id); np.delete(id);
+    } else { np.add(id); nk.delete(id); }
     saveProg({ ...progress, knownCardIds: [...nk], practiceCardIds: [...np] }); next();
   }
-  function resetCard() { setIdx(0); setFlipped(false); setQInput(''); setQResult('idle'); setArticleIdx(0); setArticleScore({ correct: 0, total: 0 }); setArticleFeedback(null); setMcqSelected(null); setMcqResult('idle'); setMcqScore({ correct: 0, total: 0 }); setGramIdx(0); setGramScore({ correct: 0, total: 0 }); setGramInput(''); setGramResult('idle'); setGramSentence(null); }
+  function resetCard() { setIdx(0); setFlipped(false); setQInput(''); setQResult('idle'); setQScore({ correct: 0, total: 0 }); setCorrectStreak(0); setArticleIdx(0); setArticleScore({ correct: 0, total: 0 }); setArticleFeedback(null); setMcqSelected(null); setMcqResult('idle'); setMcqScore({ correct: 0, total: 0 }); setGramIdx(0); setGramScore({ correct: 0, total: 0 }); setGramInput(''); setGramResult('idle'); setGramSentence(null); }
   function next() { setIdx(i => filtered.length ? (i + 1) % filtered.length : 0); setFlipped(false); setQInput(''); setQResult('idle'); }
   function prev() { setIdx(i => filtered.length ? (i - 1 + filtered.length) % filtered.length : 0); setFlipped(false); setQInput(''); setQResult('idle'); }
   function checkQ() {
     if (!cur) return;
     const input = qInput.trim().toLowerCase();
-    if (!input) { setQResult('wrong'); return; }
-    if (reversed) {
+    let isCorrect: boolean;
+    if (!input) {
+      isCorrect = false;
+    } else if (reversed) {
       const full = cur.article ? `${cur.article} ${cur.word}` : cur.word;
-      const match = input === cur.word.toLowerCase() || input === full.toLowerCase();
-      setQResult(match ? 'correct' : 'wrong');
+      isCorrect = input === cur.word.toLowerCase() || input === full.toLowerCase();
     } else {
-      setQResult(cur[ansLang].trim().toLowerCase().includes(input) ? 'correct' : 'wrong');
+      isCorrect = cur[ansLang].trim().toLowerCase().includes(input);
     }
+    setQResult(isCorrect ? 'correct' : 'wrong');
+    setQScore(s => ({ correct: s.correct + (isCorrect ? 1 : 0), total: s.total + 1 }));
+    setCorrectStreak(s => isCorrect ? s + 1 : 0);
   }
   function jump(id: string) { if (!chapter) return; const i = chapter.cards.findIndex(c => c.id === id); if (i < 0) return; setQuery(''); setTypeFilter(ALL); setMode('cards'); setIdx(i); setFlipped(false); setQInput(''); setQResult('idle'); }
 
@@ -494,6 +719,7 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
     const isCorrect = chosen === correctAnswer;
     setMcqResult(isCorrect ? 'correct' : 'wrong');
     setMcqScore(s => ({ correct: s.correct + (isCorrect ? 1 : 0), total: s.total + 1 }));
+    setCorrectStreak(s => isCorrect ? s + 1 : 0);
     if (isCorrect) mark(cur!.id, 'known');
     else mark(cur!.id, 'practice');
   }
@@ -542,6 +768,11 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
 
   return (
     <main className="h-dvh overflow-hidden">
+      {showXpToast && (
+        <div className="fixed right-4 top-16 z-[60] animate-fade-up rounded-xl bg-secondary px-4 py-2 text-sm font-bold text-secondary-foreground shadow-lg pointer-events-none">
+          +{xpGain} XP ⚡
+        </div>
+      )}
       <section className="flex h-full flex-col">
         {/* Navbar */}
         <header className="sticky top-0 z-40 animate-fade-down border-b border-white/50 bg-white/80 px-4 py-2.5 shadow-glow-sm backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/75 md:px-6">
@@ -578,6 +809,16 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
                 </div>
               </div>
               <div className="hidden items-center gap-1.5 lg:flex">
+                {xpData.streak > 0 && (
+                  <div className="flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
+                    🔥 {xpData.streak}
+                  </div>
+                )}
+                {xpData.todayXp > 0 && (
+                  <div className="flex items-center gap-1 rounded-full bg-primary/8 px-2.5 py-1 text-xs font-bold text-primary">
+                    ⚡ {xpData.todayXp} XP
+                  </div>
+                )}
                 <Button variant="ghost" size="icon" onClick={onToggleTheme} className="h-7 w-7" aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>
                   <SunMoon className="h-3.5 w-3.5" />
                 </Button>
@@ -618,13 +859,36 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
         </header>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-4 pb-8 pt-4 md:px-6">
+        <div className="flex-1 overflow-y-auto px-4 pb-24 pt-4 md:pb-8 md:px-6">
           <div className="mx-auto flex max-w-6xl flex-col gap-4">
             {error && <div className="animate-fade-up rounded-lg border border-destructive/20 bg-destructive/8 p-3 text-xs font-medium text-destructive">{error}</div>}
-            {loading && <div className="glass-panel-strong grid place-items-center rounded-xl p-10"><div className="grid justify-items-center gap-3"><div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" /><p className="text-xs text-muted-foreground">Loading...</p></div></div>}
+            {loading && (
+              <div className="glass-panel-strong grid place-items-center rounded-xl p-12">
+                <div className="grid justify-items-center gap-3">
+                  <div className="relative h-10 w-10">
+                    <div className="absolute inset-0 animate-spin rounded-full border-2 border-muted border-t-primary" />
+                    <div className="absolute inset-2 animate-spin rounded-full border-2 border-muted/50 border-t-accent" style={{ animationDirection: 'reverse', animationDuration: '0.7s' }} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Loading your chapter...</p>
+                </div>
+              </div>
+            )}
 
             {/* Dashboard mode */}
             {!loading && chapter && mode === 'dashboard' && <>
+              {/* Chapter completion celebration */}
+              {pct === 100 && (
+                <div className="animate-scale-in rounded-xl border border-accent/30 bg-gradient-to-br from-accent/10 to-primary/10 p-5 text-center shadow-sm">
+                  <p className="text-3xl mb-2">🎉</p>
+                  <h2 className="text-lg font-bold text-accent">Chapter Complete!</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">You've mastered all {total} words. Keep the streak going!</p>
+                  <div className="mt-3 flex flex-wrap justify-center gap-2">
+                    <Button size="sm" onClick={() => setMode('mcq')} className="text-xs"><Target className="h-3.5 w-3.5" /> Test yourself</Button>
+                    <Button size="sm" variant="outline" onClick={() => saveProg({ chapterId: selId, knownCardIds: [], practiceCardIds: [] })} className="text-xs"><RotateCcw className="h-3.5 w-3.5" /> Reset chapter</Button>
+                  </div>
+                </div>
+              )}
+
               {/* Chapter header */}
               <div className="animate-fade-up rounded-xl border bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-5 text-white shadow-glow-lg overflow-hidden relative md:p-7">
                 <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-primary/20 blur-[50px] animate-float" />
@@ -634,9 +898,13 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
                     <div className="flex flex-wrap gap-1.5 mb-3">
                       <Badge className="bg-primary/90 text-[10px]">{chapter.level}</Badge>
                       <Badge variant="glass" className="text-[10px]">{total} words</Badge>
+                      {pct > 0 && <Badge variant="glass" className="text-[10px]">{pct}% complete</Badge>}
                     </div>
                     <h1 className="text-xl font-bold sm:text-2xl">{chapter.title}: {chapter.theme}</h1>
                     <p className="mt-1.5 text-xs text-white/50 max-w-lg">Study vocabulary, hear pronunciation, and track your progress.</p>
+                    <div className="mt-3 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-white/15">
+                      <div className="h-full rounded-full bg-gradient-to-r from-primary to-accent transition-all duration-700" style={{ width: `${pct}%` }} />
+                    </div>
                     <div className="mt-4 flex flex-wrap gap-2">
                       <Button size="sm" onClick={() => setMode('cards')} className="bg-primary hover:bg-primary/90 text-xs"><PlayCircle className="h-3.5 w-3.5" /> Study</Button>
                       <Button size="sm" variant="glass" onClick={() => setMode('quiz')} className="text-xs"><Brain className="h-3.5 w-3.5" /> Quiz</Button>
@@ -653,6 +921,63 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
                   </div>
                 </div>
               </div>
+
+              {/* XP / Streak */}
+              <Card className="glass-panel rounded-xl animate-fade-up overflow-hidden">
+                <CardContent className="p-0">
+                  <div className="grid sm:grid-cols-3">
+                    {/* Streak */}
+                    <div className="relative flex flex-col items-center justify-center gap-1 border-b p-5 text-center sm:border-b-0 sm:border-r dark:border-white/10">
+                      <span className={cn('text-4xl leading-none', xpData.streak > 0 ? 'animate-bounce-in' : 'opacity-40')}>🔥</span>
+                      <p className="mt-1 text-2xl font-black tabular-nums text-amber-500">{xpData.streak}</p>
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Day Streak</p>
+                      {xpData.streak >= 7 && <Badge variant="secondary" className="mt-1 text-[9px]">🏆 {Math.floor(xpData.streak / 7)}wk</Badge>}
+                    </div>
+                    {/* Daily XP */}
+                    <div className="flex flex-col items-center justify-center gap-2 border-b p-5 sm:border-b-0 sm:border-r dark:border-white/10">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Daily Goal</p>
+                      <p className="text-2xl font-black tabular-nums text-primary">⚡ {xpData.todayXp}<span className="text-base font-medium text-muted-foreground">/50</span></p>
+                      <div className="w-full max-w-[140px]">
+                        <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
+                          <div className={cn('h-full rounded-full transition-all duration-700', xpData.todayXp >= 50 ? 'bg-accent' : 'bg-gradient-to-r from-primary to-accent')}
+                            style={{ width: `${Math.min(100, (xpData.todayXp / 50) * 100)}%` }} />
+                        </div>
+                      </div>
+                      {xpData.todayXp >= 50 ? <p className="text-[10px] font-bold text-accent">🎉 Goal reached!</p> : <p className="text-[10px] text-muted-foreground">{Math.max(0, 50 - xpData.todayXp)} XP to go</p>}
+                    </div>
+                    {/* Total XP */}
+                    <div className="flex flex-col items-center justify-center gap-1 p-5 text-center">
+                      <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/8 text-primary"><Zap className="h-6 w-6" /></div>
+                      <p className="mt-1 text-2xl font-black tabular-nums">{xpData.xp}</p>
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Total XP</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Next up widget */}
+              {(practiceCards[0] ?? freshCards[0]) && pct < 100 && (
+                <div className="animate-fade-up flex items-center gap-4 rounded-xl border border-primary/20 bg-primary/4 p-4 dark:bg-primary/8">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-primary">
+                      {practiceCards[0] ? 'Needs Review' : 'Up Next'}
+                    </p>
+                    {(() => {
+                      const card = practiceCards[0] ?? freshCards[0];
+                      return card ? (
+                        <p className="mt-0.5 font-bold truncate">
+                          {card.article && <span className="text-destructive mr-1">{card.article}</span>}
+                          {card.word}
+                          <span className="ml-2 text-sm font-normal text-muted-foreground">– {card.english}</span>
+                        </p>
+                      ) : null;
+                    })()}
+                  </div>
+                  <Button size="sm" onClick={() => { const c = practiceCards[0] ?? freshCards[0]; if (c) jump(c.id); }} className="shrink-0 text-xs">
+                    <PlayCircle className="h-3.5 w-3.5" /> Study
+                  </Button>
+                </div>
+              )}
 
               {/* Stats */}
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 animate-fade-up stagger-1">
@@ -730,11 +1055,23 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
 
               {/* Revision plan */}
               <Card className="glass-panel rounded-xl animate-fade-up stagger-5">
-                <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
-                  <div><h3 className="text-sm font-bold">Revision Plan</h3><p className="text-xs text-muted-foreground">Practice queue prioritizes incorrect words first.</p></div>
-                  <div className="flex gap-2">
-                    {(practiceCards[0] ?? freshCards[0]) && <Button size="sm" onClick={() => jump((practiceCards[0] ?? freshCards[0]).id)} className="text-xs"><Sparkles className="h-3.5 w-3.5" /> Start</Button>}
-                    <Button variant="outline" size="sm" onClick={() => saveProg({ chapterId: selId, knownCardIds: [], practiceCardIds: [] })} className="text-xs"><RotateCcw className="h-3.5 w-3.5" /> Reset</Button>
+                <CardContent className="p-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={cn('grid h-10 w-10 place-items-center rounded-xl', practiceN > 0 ? 'bg-destructive/8 text-destructive' : 'bg-accent/10 text-accent')}>
+                        {practiceN > 0 ? <Target className="h-5 w-5" /> : <Trophy className="h-5 w-5" />}
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold">Revision Plan</h3>
+                        <p className="text-xs text-muted-foreground">
+                          {practiceN > 0 ? `${practiceN} word${practiceN > 1 ? 's' : ''} need practice · ${freshCards.length} fresh` : 'All words marked known!'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      {(practiceCards[0] ?? freshCards[0]) && <Button size="sm" onClick={() => jump((practiceCards[0] ?? freshCards[0]).id)} className="text-xs"><Sparkles className="h-3.5 w-3.5" /> Start</Button>}
+                      <Button variant="outline" size="sm" onClick={() => saveProg({ chapterId: selId, knownCardIds: [], practiceCardIds: [] })} className="text-xs"><RotateCcw className="h-3.5 w-3.5" /> Reset</Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -777,7 +1114,22 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
               </Card>
             )}
 
-            {!loading && !filtered.length && mode !== 'dashboard' && mode !== 'articles' && <div className="glass-panel rounded-xl p-6 text-center text-xs text-muted-foreground">{srsEnabled && mode === 'cards' ? 'All caught up! No cards due for review.' : 'No cards match this filter.'}</div>}
+            {!loading && !filtered.length && mode !== 'dashboard' && mode !== 'articles' && (
+              <div className="glass-panel rounded-xl p-8 text-center">
+                <p className="text-2xl mb-2">{srsEnabled && mode === 'cards' ? '🎉' : '🔍'}</p>
+                <p className="text-sm font-semibold">{srsEnabled && mode === 'cards' ? 'All caught up!' : 'No cards found'}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {srsEnabled && mode === 'cards'
+                    ? 'No SRS cards due for review. Come back later or disable SRS to study all cards.'
+                    : 'Try adjusting your search or filter to find cards.'}
+                </p>
+                {srsEnabled && mode === 'cards' && (
+                  <Button size="sm" variant="outline" className="mt-3 text-xs" onClick={() => setSrsEnabled(false)}>
+                    Show all cards
+                  </Button>
+                )}
+              </div>
+            )}
 
             {/* Cards mode */}
             {!loading && cur && mode === 'cards' && (
@@ -787,7 +1139,7 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
                   <Progress value={((idx + 1) / filtered.length) * 100} className="h-1" />
                 </div>
                 <div className="perspective-1200 h-[clamp(240px,calc(100dvh-340px),340px)] w-full max-w-2xl">
-                  <div className={cn('preserve-3d relative h-full w-full cursor-pointer transition-transform duration-500', flipped && 'rotate-y-180')}
+                  <div className={cn('preserve-3d relative h-full w-full cursor-pointer flip-transition', flipped && 'rotate-y-180')}
                     onClick={() => setFlipped(v => !v)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setFlipped(v => !v); }} role="button" tabIndex={0}>
                     {/* Front side */}
                     <div className="backface-hidden absolute inset-0 grid place-items-center rounded-xl border bg-white/90 p-5 shadow-panel backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/75">
@@ -847,98 +1199,184 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
                   {knownIds.has(cur.id) && <Badge variant="success" className="text-[10px] animate-bounce-in">Known</Badge>}
                   {practiceIds.has(cur.id) && <Badge variant="destructive" className="text-[10px] animate-bounce-in">Practice</Badge>}
                 </div>
+                <p className="hidden text-[10px] text-muted-foreground/60 sm:block">
+                  ← → navigate &nbsp;·&nbsp; Space flip &nbsp;·&nbsp; K = known &nbsp;·&nbsp; P = practice
+                </p>
               </section>
             )}
 
             {/* Quiz mode */}
-            {!loading && cur && mode === 'quiz' && (
-              <Card className="glass-panel mx-auto w-full max-w-2xl animate-scale-in rounded-xl">
-                <CardContent className="grid gap-4 p-5">
-                  <div className="flex items-center justify-between">
-                    <Badge variant="muted" className="text-[9px] uppercase">{cur.type}</Badge>
-                    {!reversed && <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => speakGerman(cur)}><Volume2 className="h-4 w-4 text-primary" /></Button>}
-                  </div>
-                  <div className="py-3 text-center">
-                    {reversed ? <>
-                      <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">{cur[ansLang]}</h2>
-                      <p className="mt-2 text-sm text-muted-foreground">{ansLang === 'hindi' ? cur.english : cur.hindi}</p>
-                    </> : <>
-                      <p className="text-sm font-semibold text-destructive">{cur.article ?? '\u00A0'}</p>
-                      <h2 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">{cur.word}</h2>
-                    </>}
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                    <Input value={qInput} onChange={e => setQInput(e.target.value)} placeholder={reversed ? 'Type the German word...' : `Type ${ansLang} meaning...`} onKeyDown={e => e.key === 'Enter' && checkQ()} className="h-9 text-sm" />
-                    <Button size="sm" onClick={checkQ}><Check className="h-3.5 w-3.5" /> Check</Button>
-                  </div>
-                  {qResult !== 'idle' && (
-                    <div className={cn('animate-fade-up rounded-lg border p-3', qResult === 'correct' ? 'border-accent/30 bg-accent/8' : 'border-destructive/20 bg-destructive/8')}>
-                      <div className="flex items-center gap-1.5">
-                        <div className={cn('grid h-6 w-6 place-items-center rounded-full', qResult === 'correct' ? 'bg-accent/15 text-accent' : 'bg-destructive/15 text-destructive')}>
-                          {qResult === 'correct' ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+            {!loading && cur && mode === 'quiz' && (() => {
+              const quizAnswer = reversed ? (cur.article ? `${cur.article} ${cur.word}` : cur.word) : cur[ansLang];
+              return (
+                <>
+                  <Card className="glass-panel mx-auto w-full max-w-2xl animate-scale-in rounded-xl">
+                    <CardContent className={cn('grid gap-4 p-5', qResult !== 'idle' && 'pb-28')}>
+                      <div className="flex items-center justify-between">
+                        <Badge variant="muted" className="text-[9px] uppercase">{cur.type}</Badge>
+                        <div className="flex items-center gap-2">
+                          {qScore.total > 0 && (
+                            <Badge variant="secondary" className="text-[10px]">
+                              {qScore.correct}/{qScore.total} ({Math.round((qScore.correct / qScore.total) * 100)}%)
+                            </Badge>
+                          )}
+                          <span className="text-[10px] text-muted-foreground">Card {idx + 1}/{filtered.length}</span>
+                          {!reversed && (
+                            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => speakGerman(cur)}>
+                              <Volume2 className="h-4 w-4 text-primary" />
+                            </Button>
+                          )}
                         </div>
-                        <strong className="text-sm">{qResult === 'correct' ? 'Correct!' : 'Not quite'}</strong>
                       </div>
-                      <p className="mt-1.5 text-xs"><span className="text-muted-foreground">Answer: </span>{reversed ? (cur.article ? `${cur.article} ${cur.word}` : cur.word) : cur[ansLang]}</p>
-                      <SentenceHint card={cur} />
+                      <div className="py-3 text-center">
+                        {reversed ? <>
+                          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">{cur[ansLang]}</h2>
+                          <p className="mt-2 text-sm text-muted-foreground">{ansLang === 'hindi' ? cur.english : cur.hindi}</p>
+                        </> : <>
+                          <p className="text-sm font-semibold text-destructive">{cur.article ?? '\u00A0'}</p>
+                          <h2 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">{cur.word}</h2>
+                        </>}
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                        <Input
+                          value={qInput}
+                          onChange={e => setQInput(e.target.value)}
+                          placeholder={reversed ? 'Type the German word...' : `Type ${ansLang} meaning...`}
+                          onKeyDown={e => e.key === 'Enter' && qResult === 'idle' && checkQ()}
+                          className={cn(
+                            'h-11 text-sm transition-colors',
+                            qResult === 'correct' && 'border-accent animate-bounce-correct',
+                            qResult === 'wrong' && 'border-destructive animate-shake'
+                          )}
+                          disabled={qResult !== 'idle'}
+                        />
+                        <Button onClick={checkQ} disabled={qResult !== 'idle'} className="h-11">
+                          <Check className="h-4 w-4" /> Check
+                        </Button>
+                      </div>
+                      {qResult === 'idle' && <p className="text-[10px] text-muted-foreground text-center">Press Enter to check</p>}
+                      {qResult !== 'idle' && <SentenceHint card={cur} />}
+                    </CardContent>
+                  </Card>
+                  {qResult !== 'idle' && (
+                    <div className={cn(
+                      'fixed bottom-0 left-0 right-0 z-50 animate-slide-up border-t p-4 sm:p-5',
+                      qResult === 'correct' ? 'bg-accent' : 'bg-destructive'
+                    )}>
+                      <div className="mx-auto flex max-w-2xl items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/20">
+                            {qResult === 'correct' ? <Check className="h-5 w-5 text-white" /> : <X className="h-5 w-5 text-white" />}
+                          </div>
+                          <div>
+                            <p className="text-base font-bold text-white">
+                              {qResult === 'correct'
+                                ? correctStreak >= 5 ? `🔥 ${correctStreak} streak!` : correctStreak >= 3 ? '🎯 On fire!' : 'Excellent!'
+                                : 'Correct answer:'}
+                            </p>
+                            {qResult === 'wrong' && <p className="text-sm text-white/85">{quizAnswer}</p>}
+                          </div>
+                        </div>
+                        <Button
+                          onClick={() => mark(cur.id, qResult === 'correct' ? 'known' : 'practice')}
+                          className={cn('px-6 font-bold', qResult === 'correct' ? 'bg-white text-accent hover:bg-white/90' : 'bg-white text-destructive hover:bg-white/90')}
+                        >
+                          Continue
+                        </Button>
+                      </div>
                     </div>
                   )}
-                  <div className="flex flex-wrap gap-1.5">
-                    <Button variant="destructive" size="sm" onClick={() => mark(cur.id, 'practice')} className="text-xs"><X className="h-3.5 w-3.5" /> Practice</Button>
-                    <Button variant="success" size="sm" onClick={() => mark(cur.id, 'known')} className="text-xs"><Check className="h-3.5 w-3.5" /> Know it</Button>
-                    <Button variant="outline" size="sm" onClick={next} className="text-xs">Next <ArrowRight className="h-3.5 w-3.5" /></Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                </>
+              );
+            })()}
 
             {/* MCQ mode */}
-            {!loading && cur && mode === 'mcq' && filtered.length >= 2 && (
-              <Card className="glass-panel mx-auto w-full max-w-2xl animate-scale-in rounded-xl">
-                <CardContent className="grid gap-4 p-5">
-                  <div className="flex items-center justify-between">
-                    <Badge variant="muted" className="text-[9px] uppercase">{cur.type}</Badge>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary" className="text-[10px]">{mcqScore.correct}/{mcqScore.total}{mcqScore.total > 0 && ` (${Math.round((mcqScore.correct / mcqScore.total) * 100)}%)`}</Badge>
-                      <span className="text-[10px] text-muted-foreground">Card {idx + 1}/{filtered.length}</span>
-                    </div>
-                  </div>
-                  <div className="py-4 text-center">
-                    {reversed ? <>
-                      <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">{cur[ansLang]}</h2>
-                      <p className="mt-2 text-sm text-muted-foreground">{ansLang === 'hindi' ? cur.english : cur.hindi}</p>
-                    </> : <>
-                      <p className="text-sm font-semibold text-destructive">{cur.article ?? '\u00A0'}</p>
-                      <h2 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">{cur.word}</h2>
-                    </>}
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {mcqOptions.map(opt => {
-                      const correctAnswer = reversed ? (cur.article ? `${cur.article} ${cur.word}` : cur.word) : cur[ansLang];
-                      const isCorrect = opt === correctAnswer;
-                      const isSelected = opt === mcqSelected;
-                      let variant: 'outline' | 'success' | 'destructive' = 'outline';
-                      if (mcqSelected) {
-                        if (isCorrect) variant = 'success';
-                        else if (isSelected) variant = 'destructive';
-                      }
-                      return (
-                        <Button key={opt} variant={variant} size="sm" onClick={() => answerMcq(opt)}
-                          className={cn('h-auto min-h-[44px] whitespace-normal text-xs justify-start px-4 py-2.5 transition-all', !mcqSelected && 'hover:border-primary/50')}>
-                          {opt}
-                        </Button>
-                      );
-                    })}
-                  </div>
-                  {mcqSelected && <SentenceHint card={cur} />}
+            {!loading && cur && mode === 'mcq' && filtered.length >= 2 && (() => {
+              const mcqCorrectAnswer = reversed ? (cur.article ? `${cur.article} ${cur.word}` : cur.word) : cur[ansLang];
+              return (
+                <>
+                  <Card className="glass-panel mx-auto w-full max-w-2xl animate-scale-in rounded-xl">
+                    <CardContent className={cn('grid gap-4 p-5', mcqSelected && 'pb-28')}>
+                      <div className="flex items-center justify-between">
+                        <Badge variant="muted" className="text-[9px] uppercase">{cur.type}</Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary" className="text-[10px]">
+                            {mcqScore.correct}/{mcqScore.total}{mcqScore.total > 0 && ` (${Math.round((mcqScore.correct / mcqScore.total) * 100)}%)`}
+                          </Badge>
+                          <span className="text-[10px] text-muted-foreground">Card {idx + 1}/{filtered.length}</span>
+                        </div>
+                      </div>
+                      <div className="py-4 text-center">
+                        {reversed ? <>
+                          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">{cur[ansLang]}</h2>
+                          <p className="mt-2 text-sm text-muted-foreground">{ansLang === 'hindi' ? cur.english : cur.hindi}</p>
+                        </> : <>
+                          <p className="text-sm font-semibold text-destructive">{cur.article ?? '\u00A0'}</p>
+                          <h2 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">{cur.word}</h2>
+                        </>}
+                      </div>
+                      <div className="grid gap-2.5">
+                        {mcqOptions.map((opt, optIdx) => {
+                          const isCorrect = opt === mcqCorrectAnswer;
+                          const isSelected = opt === mcqSelected;
+                          let variant: 'outline' | 'success' | 'destructive' = 'outline';
+                          if (mcqSelected) {
+                            if (isCorrect) variant = 'success';
+                            else if (isSelected) variant = 'destructive';
+                          }
+                          const letter = ['A', 'B', 'C', 'D'][optIdx] ?? String(optIdx + 1);
+                          return (
+                            <Button key={opt} variant={variant} onClick={() => answerMcq(opt)} disabled={!!mcqSelected}
+                              className={cn(
+                                'h-auto min-h-[52px] w-full whitespace-normal rounded-xl border-2 px-4 py-3 text-sm font-semibold justify-start gap-3 transition-all',
+                                !mcqSelected && 'hover:border-primary hover:bg-primary/5 hover:shadow-sm',
+                                isSelected && isCorrect && 'animate-bounce-correct',
+                                isSelected && !isCorrect && 'animate-shake',
+                              )}>
+                              <span className={cn(
+                                'grid h-7 w-7 shrink-0 place-items-center rounded-lg border-2 text-xs font-bold tabular-nums',
+                                variant === 'outline' ? 'border-muted-foreground/30 text-muted-foreground' : 'border-current/30 bg-current/10'
+                              )}>{letter}</span>
+                              {opt}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                      {mcqSelected && <SentenceHint card={cur} />}
+                    </CardContent>
+                  </Card>
+                  {!mcqSelected && <p className="hidden text-center text-[10px] text-muted-foreground/60 sm:block">Press 1–{mcqOptions.length} to select &nbsp;·&nbsp; Enter to continue</p>}
                   {mcqSelected && (
-                    <div className="flex justify-center">
-                      <Button variant="outline" size="sm" onClick={mcqNext} className="text-xs">Next <ArrowRight className="h-3.5 w-3.5" /></Button>
+                    <div className={cn(
+                      'fixed bottom-0 left-0 right-0 z-50 animate-slide-up border-t p-4 sm:p-5',
+                      mcqResult === 'correct' ? 'bg-accent' : 'bg-destructive'
+                    )}>
+                      <div className="mx-auto flex max-w-2xl items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/20">
+                            {mcqResult === 'correct' ? <Check className="h-5 w-5 text-white" /> : <X className="h-5 w-5 text-white" />}
+                          </div>
+                          <div>
+                            <p className="text-base font-bold text-white">
+                              {mcqResult === 'correct'
+                                ? correctStreak >= 5 ? `🔥 ${correctStreak} streak!` : correctStreak >= 3 ? '🎯 On fire!' : 'Excellent!'
+                                : 'Correct answer:'}
+                            </p>
+                            {mcqResult === 'wrong' && <p className="text-sm text-white/85">{mcqCorrectAnswer}</p>}
+                          </div>
+                        </div>
+                        <Button
+                          onClick={mcqNext}
+                          className={cn('px-6 font-bold', mcqResult === 'correct' ? 'bg-white text-accent hover:bg-white/90' : 'bg-white text-destructive hover:bg-white/90')}
+                        >
+                          Continue
+                        </Button>
+                      </div>
                     </div>
                   )}
-                </CardContent>
-              </Card>
-            )}
+                </>
+              );
+            })()}
 
             {/* Article Trainer mode */}
             {!loading && chapter && mode === 'articles' && (
@@ -947,6 +1385,11 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
                   <div className="glass-panel rounded-xl p-6 text-center text-xs text-muted-foreground">No nouns with articles in this chapter.</div>
                 ) : (() => {
                   const noun = nouns[articleIdx];
+                  const artColors = {
+                    der: { base: 'border-blue-400 text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-400 dark:hover:bg-blue-950/30', correct: 'bg-blue-100 border-blue-500 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300', wrong: 'bg-destructive/8 border-destructive text-destructive' },
+                    die: { base: 'border-rose-400 text-rose-600 hover:bg-rose-50 dark:border-rose-500 dark:text-rose-400 dark:hover:bg-rose-950/30', correct: 'bg-rose-100 border-rose-500 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300', wrong: 'bg-destructive/8 border-destructive text-destructive' },
+                    das: { base: 'border-emerald-400 text-emerald-600 hover:bg-emerald-50 dark:border-emerald-500 dark:text-emerald-400 dark:hover:bg-emerald-950/30', correct: 'bg-emerald-100 border-emerald-500 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300', wrong: 'bg-destructive/8 border-destructive text-destructive' },
+                  } as const;
                   return <>
                     <div className="flex items-center gap-3">
                       <Badge variant="secondary" className="text-[10px]">
@@ -955,37 +1398,52 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
                       </Badge>
                       <span className="text-[10px] text-muted-foreground">Noun {articleIdx + 1}/{nouns.length}</span>
                     </div>
-                    <Card className="glass-panel-strong w-full max-w-md rounded-xl">
+                    <Card className={cn('glass-panel-strong w-full max-w-md rounded-xl', articleFeedback && 'pb-24')}>
                       <CardContent className="grid gap-5 p-6 text-center">
                         <Badge variant="muted" className="mx-auto text-[9px] uppercase">{noun.type}</Badge>
-                        <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">{noun.word}</h2>
-                        <p className="text-sm text-muted-foreground">{noun[ansLang]}</p>
+                        <div>
+                          <p className="text-sm text-muted-foreground">{noun[ansLang]}</p>
+                          <h2 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">{noun.word}</h2>
+                        </div>
                         <div className="grid grid-cols-3 gap-3">
                           {(['der', 'die', 'das'] as const).map(art => {
-                            let cls = 'h-14 text-lg font-bold transition-all';
+                            const colors = artColors[art];
+                            let cls = `h-16 text-xl font-bold border-2 rounded-xl transition-all ${colors.base}`;
                             if (articleFeedback) {
-                              if (art === noun.article) cls += ' ring-2 ring-accent bg-accent/10 text-accent';
-                              else if (art === articleFeedback.answer && !articleFeedback.correct) cls += ' ring-2 ring-destructive bg-destructive/8 text-destructive';
+                              if (art === noun.article) cls = `h-16 text-xl font-bold border-2 rounded-xl ${colors.correct} ${articleFeedback.correct && art === articleFeedback.answer ? 'animate-bounce-correct' : ''}`;
+                              else if (art === articleFeedback.answer && !articleFeedback.correct) cls = `h-16 text-xl font-bold border-2 rounded-xl ${colors.wrong} animate-shake`;
                             }
                             return (
-                              <Button key={art} variant="outline" onClick={() => answerArticle(art)}
-                                disabled={!!articleFeedback} className={cls}>
+                              <button key={art} onClick={() => answerArticle(art)} disabled={!!articleFeedback} className={cls}>
                                 {art}
-                              </Button>
+                              </button>
                             );
                           })}
                         </div>
-                        {articleFeedback && !articleFeedback.correct && (
-                          <p className="text-xs text-destructive animate-fade-up">Correct: <strong>{noun.article} {noun.word}</strong></p>
-                        )}
                         {articleFeedback && <SentenceHint card={noun} />}
-                        {articleFeedback && (
-                          <div className="flex justify-center pt-1">
-                            <Button variant="outline" size="sm" onClick={articleNext} className="text-xs">Next <ArrowRight className="h-3.5 w-3.5" /></Button>
-                          </div>
-                        )}
                       </CardContent>
                     </Card>
+                    {articleFeedback && (
+                      <div className={cn(
+                        'fixed bottom-0 left-0 right-0 z-50 animate-slide-up border-t p-4 sm:p-5',
+                        articleFeedback.correct ? 'bg-accent' : 'bg-destructive'
+                      )}>
+                        <div className="mx-auto flex max-w-md items-center justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/20">
+                              {articleFeedback.correct ? <Check className="h-5 w-5 text-white" /> : <X className="h-5 w-5 text-white" />}
+                            </div>
+                            <div>
+                              <p className="text-base font-bold text-white">{articleFeedback.correct ? 'Correct!' : 'Correct answer:'}</p>
+                              {!articleFeedback.correct && <p className="text-sm text-white/85">{noun.article} {noun.word}</p>}
+                            </div>
+                          </div>
+                          <Button onClick={articleNext} className={cn('px-6 font-bold', articleFeedback.correct ? 'bg-white text-accent hover:bg-white/90' : 'bg-white text-destructive hover:bg-white/90')}>
+                            Continue
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </>;
                 })()}
               </section>
@@ -995,65 +1453,78 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
             {!loading && chapter && mode === 'grammar' && filtered.length > 0 && (() => {
               const gramCard = filtered[gramIdx % filtered.length];
               return gramCard && gramSentence ? (
-                <section className="grid justify-items-center gap-4 animate-fade-up">
-                  <div className="flex items-center gap-3">
-                    <Badge variant="secondary" className="text-[10px]">
-                      {gramScore.correct}/{gramScore.total}
-                      {gramScore.total > 0 && ` (${Math.round((gramScore.correct / gramScore.total) * 100)}%)`}
-                    </Badge>
-                    <span className="text-[10px] text-muted-foreground">Word {(gramIdx % filtered.length) + 1}/{filtered.length}</span>
-                  </div>
-                  <Card className="glass-panel-strong w-full max-w-2xl rounded-xl">
-                    <CardContent className="grid gap-4 p-5">
-                      <div className="flex items-center justify-between">
-                        <Badge variant="muted" className="text-[9px] uppercase">{gramCard.type}</Badge>
-                        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => speakSentence(gramSentence.fullDe)}>
-                          <Volume2 className="h-4 w-4 text-primary" />
-                        </Button>
-                      </div>
-                      <div className="py-3 text-center">
-                        <h2 className="text-xl font-bold tracking-tight sm:text-2xl">{gramSentence.blankedDe}</h2>
-                        <p className="mt-2 text-sm text-muted-foreground">{ansLang === 'hindi' ? gramSentence.hi : gramSentence.en}</p>
-                      </div>
-                      <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                        <Input
-                          value={gramInput}
-                          onChange={e => setGramInput(e.target.value)}
-                          placeholder="Type the missing word..."
-                          onKeyDown={e => e.key === 'Enter' && gramResult === 'idle' && checkGrammar()}
-                          className="h-9 text-sm"
-                          disabled={gramResult !== 'idle'}
-                        />
-                        <Button size="sm" onClick={checkGrammar} disabled={gramResult !== 'idle'}>
-                          <Check className="h-3.5 w-3.5" /> Check
-                        </Button>
-                      </div>
-                      {gramResult !== 'idle' && (
-                        <div className={cn('animate-fade-up rounded-lg border p-3', gramResult === 'correct' ? 'border-accent/30 bg-accent/8' : 'border-destructive/20 bg-destructive/8')}>
-                          <div className="flex items-center gap-1.5">
-                            <div className={cn('grid h-6 w-6 place-items-center rounded-full', gramResult === 'correct' ? 'bg-accent/15 text-accent' : 'bg-destructive/15 text-destructive')}>
-                              {gramResult === 'correct' ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
-                            </div>
-                            <strong className="text-sm">{gramResult === 'correct' ? 'Correct!' : 'Not quite'}</strong>
+                <>
+                  <section className="grid justify-items-center gap-4 animate-fade-up">
+                    <div className="flex items-center gap-3">
+                      <Badge variant="secondary" className="text-[10px]">
+                        {gramScore.correct}/{gramScore.total}
+                        {gramScore.total > 0 && ` (${Math.round((gramScore.correct / gramScore.total) * 100)}%)`}
+                      </Badge>
+                      <span className="text-[10px] text-muted-foreground">Word {(gramIdx % filtered.length) + 1}/{filtered.length}</span>
+                    </div>
+                    <Card className={cn('glass-panel-strong w-full max-w-2xl rounded-xl', gramResult !== 'idle' && 'pb-24')}>
+                      <CardContent className="grid gap-4 p-5">
+                        <div className="flex items-center justify-between">
+                          <Badge variant="muted" className="text-[9px] uppercase">{gramCard.type}</Badge>
+                          <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => speakSentence(gramSentence.fullDe)}>
+                            <Volume2 className="h-4 w-4 text-primary" />
+                          </Button>
+                        </div>
+                        <div className="py-3 text-center">
+                          <p className="text-sm text-muted-foreground mb-2">{ansLang === 'hindi' ? gramSentence.hi : gramSentence.en}</p>
+                          <h2 className="text-xl font-bold tracking-tight sm:text-2xl leading-relaxed">{gramSentence.blankedDe}</h2>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                          <Input
+                            value={gramInput}
+                            onChange={e => setGramInput(e.target.value)}
+                            placeholder="Type the missing word..."
+                            onKeyDown={e => e.key === 'Enter' && gramResult === 'idle' && checkGrammar()}
+                            className={cn(
+                              'h-10 text-sm transition-colors',
+                              gramResult === 'correct' && 'border-accent',
+                              gramResult === 'wrong' && 'border-destructive',
+                            )}
+                            disabled={gramResult !== 'idle'}
+                          />
+                          <Button onClick={checkGrammar} disabled={gramResult !== 'idle'}>
+                            <Check className="h-4 w-4" /> Check
+                          </Button>
+                        </div>
+                        {gramResult !== 'idle' && (
+                          <div className="rounded-lg border bg-muted/20 p-3 dark:border-white/10">
+                            <p className="text-xs">
+                              <span className="text-muted-foreground">Full sentence: </span>
+                              <span dangerouslySetInnerHTML={{ __html: gramSentence.fullDe.replace(new RegExp(escapeRegex(gramSentence.answer), 'i'), `<strong class="text-primary">${gramSentence.answer}</strong>`) }} />
+                            </p>
+                            <SentenceHint card={gramCard} />
                           </div>
-                          <p className="mt-1.5 text-xs">
-                            <span className="text-muted-foreground">Sentence: </span>
-                            <span dangerouslySetInnerHTML={{ __html: gramSentence.fullDe.replace(new RegExp(escapeRegex(gramSentence.answer), 'i'), `<strong class="text-primary">${gramSentence.answer}</strong>`) }} />
-                          </p>
-                          {gramResult === 'wrong' && (
-                            <p className="mt-1 text-xs"><span className="text-muted-foreground">Answer: </span><strong>{gramSentence.answer}</strong></p>
-                          )}
-                          <SentenceHint card={gramCard} />
+                        )}
+                      </CardContent>
+                    </Card>
+                  </section>
+                  {gramResult !== 'idle' && (
+                    <div className={cn(
+                      'fixed bottom-0 left-0 right-0 z-50 animate-slide-up border-t p-4 sm:p-5',
+                      gramResult === 'correct' ? 'bg-accent' : 'bg-destructive'
+                    )}>
+                      <div className="mx-auto flex max-w-2xl items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/20">
+                            {gramResult === 'correct' ? <Check className="h-5 w-5 text-white" /> : <X className="h-5 w-5 text-white" />}
+                          </div>
+                          <div>
+                            <p className="text-base font-bold text-white">{gramResult === 'correct' ? 'Correct!' : 'Correct answer:'}</p>
+                            {gramResult === 'wrong' && <p className="text-sm text-white/85">{gramSentence.answer}</p>}
+                          </div>
                         </div>
-                      )}
-                      {gramResult !== 'idle' && (
-                        <div className="flex justify-center">
-                          <Button variant="outline" size="sm" onClick={gramNext} className="text-xs">Next <ArrowRight className="h-3.5 w-3.5" /></Button>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </section>
+                        <Button onClick={gramNext} className={cn('px-6 font-bold', gramResult === 'correct' ? 'bg-white text-accent hover:bg-white/90' : 'bg-white text-destructive hover:bg-white/90')}>
+                          Continue
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : null;
             })()}
 
@@ -1074,6 +1545,25 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
             )}
           </div>
         </div>
+
+        {/* Mobile bottom nav */}
+        <nav className="md:hidden shrink-0 border-t border-border/60 bg-white/90 backdrop-blur-2xl dark:bg-slate-950/85">
+          <div className="mx-auto grid max-w-lg pb-safe" style={{ gridTemplateColumns: `repeat(${Math.min(navs.length, 5)}, 1fr)` }}>
+            {navs.slice(0, 5).map(n => (
+              <button key={n.v} onClick={() => setMode(n.v)}
+                className={cn(
+                  'tap-highlight-none flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-semibold transition-colors active:opacity-70',
+                  mode === n.v ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+                )}>
+                <span className={cn('relative grid h-7 w-7 place-items-center rounded-xl transition-all duration-200', mode === n.v ? 'bg-primary/12 scale-110' : 'scale-100')}>
+                  {n.icon}
+                  {mode === n.v && <span className="absolute -bottom-0.5 left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full bg-primary" />}
+                </span>
+                {n.l}
+              </button>
+            ))}
+          </div>
+        </nav>
       </section>
     </main>
   );
@@ -1641,6 +2131,15 @@ function speakSentence(text: string) {
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'de-DE'; u.rate = 0.82; u.pitch = 1;
   window.speechSynthesis.speak(u);
+}
+
+/* ═══════════════ XP HELPERS ═══════════════ */
+
+function loadXpData(username: string): XpData {
+  try { const r = localStorage.getItem(`xp-${username}`); return r ? JSON.parse(r) : { xp: 0, streak: 0, lastStudyDate: '', todayXp: 0 }; } catch { return { xp: 0, streak: 0, lastStudyDate: '', todayXp: 0 }; }
+}
+function saveXpData(username: string, data: XpData) {
+  try { localStorage.setItem(`xp-${username}`, JSON.stringify(data)); } catch {}
 }
 
 /* ═══════════════ HELPERS ═══════════════ */

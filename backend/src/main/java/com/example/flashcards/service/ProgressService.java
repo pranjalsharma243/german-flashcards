@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 
 @Service
 public class ProgressService {
@@ -77,6 +78,6 @@ public class ProgressService {
     }
 
     private List<String> nullToEmpty(List<String> cardIds) {
-        return cardIds == null ? List.of() : cardIds.stream().distinct().toList();
+        return cardIds == null ? List.of() : cardIds.stream().filter(Objects::nonNull).distinct().toList();
     }
 }

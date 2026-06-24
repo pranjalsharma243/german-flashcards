@@ -37,8 +37,25 @@ public class JwtService {
             @Value("${app.jwt.expiration-seconds}") long expirationSeconds
     ) {
         this.objectMapper = objectMapper;
-        this.secret = secret.getBytes(StandardCharsets.UTF_8);
+        this.secret = decodeSecret(secret);
         this.expirationSeconds = expirationSeconds;
+    }
+
+    private static byte[] decodeSecret(String secret) {
+        byte[] bytes;
+        try {
+            bytes = Base64.getDecoder().decode(secret);
+        } catch (IllegalArgumentException e) {
+            bytes = secret.getBytes(StandardCharsets.UTF_8);
+        }
+        if (bytes.length < 32) {
+            throw new IllegalStateException(
+                "app.jwt.secret must be at least 32 bytes (256 bits). " +
+                "Set APP_JWT_SECRET to a Base64-encoded random value: " +
+                "openssl rand -base64 32"
+            );
+        }
+        return bytes;
     }
 
     public String createToken(String username, String role) {

@@ -14,7 +14,7 @@
     --secondary-foreground: 24 40% 12%;
     --muted: 220 14% 92%;
     --muted-foreground: 220 9% 46%;
-    --accent: 160 60% 45%;
+    --accent: 118 55% 42%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 72% 63%;
     --destructive-foreground: 0 0% 100%;
@@ -35,7 +35,7 @@
     --secondary-foreground: 24 40% 12%;
     --muted: 222 28% 15%;
     --muted-foreground: 215 20% 72%;
-    --accent: 160 60% 52%;
+    --accent: 118 60% 50%;
     --accent-foreground: 224 20% 12%;
     --destructive: 0 72% 63%;
     --destructive-foreground: 210 40% 96%;
@@ -73,7 +73,7 @@
   .dark body {
     background:
       radial-gradient(ellipse 70% 50% at 15% 5%, rgba(99, 102, 241, 0.18), transparent),
-      radial-gradient(ellipse 50% 40% at 85% 10%, rgba(52, 211, 153, 0.09), transparent),
+      radial-gradient(ellipse 50% 40% at 85% 10%, rgba(74, 196, 74, 0.07), transparent),
       linear-gradient(170deg, #020617 0%, #0f172a 55%, #111827 100%);
   }
 
@@ -206,6 +206,31 @@
   .stagger-7 { animation-delay: 0.35s; }
   .stagger-8 { animation-delay: 0.4s; }
 
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .tap-highlight-none { -webkit-tap-highlight-color: transparent; }
+  .flip-transition { transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1); }
+
   .progress-ring-track { stroke: rgba(255,255,255,0.15); fill: none; stroke-linecap: round; }
   .progress-ring-fill { fill: none; stroke-linecap: round; transition: stroke-dashoffset 1s cubic-bezier(0.16, 1, 0.3, 1); filter: drop-shadow(0 0 6px rgba(99, 102, 241, 0.4)); }
+
+  .animate-slide-up { animation: slide-up 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .animate-shake { animation: shake 0.38s ease both; }
+  .animate-bounce-correct { animation: bounce-correct 0.45s ease both; }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-5px); }
+  40%, 80% { transform: translateX(5px); }
+}
+
+@keyframes bounce-correct {
+  0%, 100% { transform: scale(1); }
+  30% { transform: scale(1.07); }
+  65% { transform: scale(0.97); }
 }

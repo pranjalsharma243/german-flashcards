@@ -62,4 +62,9 @@ public class FlashcardController {
     public ResponseEntity<String> handleMissingChapter(NoSuchElementException exception) {
         return ResponseEntity.notFound().build();
     }
+
+    @org.springframework.web.bind.annotation.ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<String> handleBadRequest(IllegalArgumentException exception) {
+        return ResponseEntity.badRequest().body(exception.getMessage());
+    }
 }
