@@ -549,6 +549,8 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
   const [gramInput, setGramInput] = React.useState('');
   const [gramResult, setGramResult] = React.useState<'idle' | 'correct' | 'wrong'>('idle');
   const [gramSentence, setGramSentence] = React.useState<GeneratedSentence | null>(null);
+  const [aiHint, setAiHint] = React.useState<string | null>(null);
+  const [aiHintLoading, setAiHintLoading] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [mobMenu, setMobMenu] = React.useState(false);
@@ -671,8 +673,8 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
     saveProg({ ...progress, knownCardIds: [...nk], practiceCardIds: [...np] }); next();
   }
   function resetCard() { setIdx(0); setFlipped(false); setQInput(''); setQResult('idle'); setQScore({ correct: 0, total: 0 }); setCorrectStreak(0); setArticleIdx(0); setArticleScore({ correct: 0, total: 0 }); setArticleFeedback(null); setMcqSelected(null); setMcqResult('idle'); setMcqScore({ correct: 0, total: 0 }); setGramIdx(0); setGramScore({ correct: 0, total: 0 }); setGramInput(''); setGramResult('idle'); setGramSentence(null); }
-  function next() { setIdx(i => filtered.length ? (i + 1) % filtered.length : 0); setFlipped(false); setQInput(''); setQResult('idle'); }
-  function prev() { setIdx(i => filtered.length ? (i - 1 + filtered.length) % filtered.length : 0); setFlipped(false); setQInput(''); setQResult('idle'); }
+  function next() { setIdx(i => filtered.length ? (i + 1) % filtered.length : 0); setFlipped(false); setQInput(''); setQResult('idle'); setAiHint(null); }
+  function prev() { setIdx(i => filtered.length ? (i - 1 + filtered.length) % filtered.length : 0); setFlipped(false); setQInput(''); setQResult('idle'); setAiHint(null); }
   function checkQ() {
     if (!cur) return;
     const input = qInput.trim().toLowerCase();
@@ -724,7 +726,23 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
     else mark(cur!.id, 'practice');
   }
 
-  function mcqNext() { setMcqSelected(null); setMcqResult('idle'); next(); }
+  function mcqNext() { setMcqSelected(null); setMcqResult('idle'); setAiHint(null); next(); }
+
+  async function fetchAiHint(card: CardItem, wrongAnswer: string) {
+    setAiHintLoading(true);
+    try {
+      const res = await fetch(`${API}/ai/hint`, {
+        method: 'POST',
+        headers: hdrs(auth.token),
+        body: JSON.stringify({ cardId: card.id, word: card.word, article: card.article ?? '', english: card.english, hindi: card.hindi, wrongAnswer }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { hint: string; available: boolean };
+        if (data.available) setAiHint(data.hint);
+      }
+    } catch { /* silently fail */ }
+    finally { setAiHintLoading(false); }
+  }
 
   React.useEffect(() => {
     if (mode === 'grammar' && filtered.length > 0) {
@@ -1263,26 +1281,40 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
                       'fixed bottom-0 left-0 right-0 z-50 animate-slide-up border-t p-4 sm:p-5',
                       qResult === 'correct' ? 'bg-accent' : 'bg-destructive'
                     )}>
-                      <div className="mx-auto flex max-w-2xl items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/20">
-                            {qResult === 'correct' ? <Check className="h-5 w-5 text-white" /> : <X className="h-5 w-5 text-white" />}
+                      <div className="mx-auto max-w-2xl space-y-3">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/20">
+                              {qResult === 'correct' ? <Check className="h-5 w-5 text-white" /> : <X className="h-5 w-5 text-white" />}
+                            </div>
+                            <div>
+                              <p className="text-base font-bold text-white">
+                                {qResult === 'correct'
+                                  ? correctStreak >= 5 ? `🔥 ${correctStreak} streak!` : correctStreak >= 3 ? '🎯 On fire!' : 'Excellent!'
+                                  : 'Correct answer:'}
+                              </p>
+                              {qResult === 'wrong' && <p className="text-sm text-white/85">{quizAnswer}</p>}
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-base font-bold text-white">
-                              {qResult === 'correct'
-                                ? correctStreak >= 5 ? `🔥 ${correctStreak} streak!` : correctStreak >= 3 ? '🎯 On fire!' : 'Excellent!'
-                                : 'Correct answer:'}
-                            </p>
-                            {qResult === 'wrong' && <p className="text-sm text-white/85">{quizAnswer}</p>}
+                          <div className="flex shrink-0 items-center gap-2">
+                            {qResult === 'wrong' && !aiHint && (
+                              <Button size="sm" variant="glass" onClick={() => fetchAiHint(cur, qInput)} disabled={aiHintLoading} className="text-xs">
+                                {aiHintLoading ? <span className="h-3.5 w-3.5 animate-spin rounded-full border border-white/40 border-t-white" /> : '💡'} Hint
+                              </Button>
+                            )}
+                            <Button
+                              onClick={() => mark(cur.id, qResult === 'correct' ? 'known' : 'practice')}
+                              className={cn('px-6 font-bold', qResult === 'correct' ? 'bg-white text-accent hover:bg-white/90' : 'bg-white text-destructive hover:bg-white/90')}
+                            >
+                              Continue
+                            </Button>
                           </div>
                         </div>
-                        <Button
-                          onClick={() => mark(cur.id, qResult === 'correct' ? 'known' : 'practice')}
-                          className={cn('px-6 font-bold', qResult === 'correct' ? 'bg-white text-accent hover:bg-white/90' : 'bg-white text-destructive hover:bg-white/90')}
-                        >
-                          Continue
-                        </Button>
+                        {aiHint && (
+                          <div className="rounded-xl bg-white/15 px-4 py-2.5 text-sm text-white animate-fade-up">
+                            💡 {aiHint}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1351,26 +1383,40 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
                       'fixed bottom-0 left-0 right-0 z-50 animate-slide-up border-t p-4 sm:p-5',
                       mcqResult === 'correct' ? 'bg-accent' : 'bg-destructive'
                     )}>
-                      <div className="mx-auto flex max-w-2xl items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/20">
-                            {mcqResult === 'correct' ? <Check className="h-5 w-5 text-white" /> : <X className="h-5 w-5 text-white" />}
+                      <div className="mx-auto max-w-2xl space-y-3">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/20">
+                              {mcqResult === 'correct' ? <Check className="h-5 w-5 text-white" /> : <X className="h-5 w-5 text-white" />}
+                            </div>
+                            <div>
+                              <p className="text-base font-bold text-white">
+                                {mcqResult === 'correct'
+                                  ? correctStreak >= 5 ? `🔥 ${correctStreak} streak!` : correctStreak >= 3 ? '🎯 On fire!' : 'Excellent!'
+                                  : 'Correct answer:'}
+                              </p>
+                              {mcqResult === 'wrong' && <p className="text-sm text-white/85">{mcqCorrectAnswer}</p>}
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-base font-bold text-white">
-                              {mcqResult === 'correct'
-                                ? correctStreak >= 5 ? `🔥 ${correctStreak} streak!` : correctStreak >= 3 ? '🎯 On fire!' : 'Excellent!'
-                                : 'Correct answer:'}
-                            </p>
-                            {mcqResult === 'wrong' && <p className="text-sm text-white/85">{mcqCorrectAnswer}</p>}
+                          <div className="flex shrink-0 items-center gap-2">
+                            {mcqResult === 'wrong' && !aiHint && (
+                              <Button size="sm" variant="glass" onClick={() => fetchAiHint(cur, mcqSelected ?? '')} disabled={aiHintLoading} className="text-xs">
+                                {aiHintLoading ? <span className="h-3.5 w-3.5 animate-spin rounded-full border border-white/40 border-t-white" /> : '💡'} Hint
+                              </Button>
+                            )}
+                            <Button
+                              onClick={mcqNext}
+                              className={cn('px-6 font-bold', mcqResult === 'correct' ? 'bg-white text-accent hover:bg-white/90' : 'bg-white text-destructive hover:bg-white/90')}
+                            >
+                              Continue
+                            </Button>
                           </div>
                         </div>
-                        <Button
-                          onClick={mcqNext}
-                          className={cn('px-6 font-bold', mcqResult === 'correct' ? 'bg-white text-accent hover:bg-white/90' : 'bg-white text-destructive hover:bg-white/90')}
-                        >
-                          Continue
-                        </Button>
+                        {aiHint && (
+                          <div className="rounded-xl bg-white/15 px-4 py-2.5 text-sm text-white animate-fade-up">
+                            💡 {aiHint}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
