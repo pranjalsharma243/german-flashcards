@@ -10,7 +10,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
+import org.springframework.util.MimeType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -144,6 +146,81 @@ public class AiService {
         int end = text.lastIndexOf('}');
         if (start >= 0 && end > start) return text.substring(start, end + 1);
         return text;
+    }
+
+    public List<Card> extractAndTranslateFromImage(byte[] imageBytes, String mimeType) {
+        if (!enabled) throw new IllegalStateException("AI is not configured");
+        try {
+            String raw = chatClient.prompt()
+                    .user(u -> u.text("""
+                            Look at this image. Find ALL German words or vocabulary items visible.
+                            For each German word, return a JSON object with:
+                            - "type": one of noun/verb/adjective/adverb/phrase
+                            - "article": "der", "die", or "das" for nouns, null for others
+                            - "word": the German word exactly as shown
+                            - "english": concise English meaning
+                            - "hindi": Hindi meaning in Devanagari script
+
+                            Return ONLY a valid JSON array. No markdown, no code blocks, no explanation.
+                            If no German words are found, return an empty array: []
+                            """)
+                            .media(MimeType.valueOf(mimeType), new ByteArrayResource(imageBytes)))
+                    .call()
+                    .content();
+            if (raw == null) throw new RuntimeException("Empty response from AI");
+            return parseCardsFromJson(extractJsonArray(raw.trim()));
+        } catch (Exception e) {
+            log.warn("AI image extraction failed: {}", e.getMessage());
+            throw new RuntimeException("AI image extraction failed: " + e.getMessage());
+        }
+    }
+
+    public List<Card> extractAndTranslateFromText(String pdfText) {
+        if (!enabled) throw new IllegalStateException("AI is not configured");
+        try {
+            String raw = chatClient.prompt()
+                    .user(u -> u.text("""
+                            The following text was extracted from a PDF. Find ALL German words or vocabulary items in it.
+                            For each German word, return a JSON object with:
+                            - "type": one of noun/verb/adjective/adverb/phrase
+                            - "article": "der", "die", or "das" for nouns, null for others
+                            - "word": the German word exactly as shown
+                            - "english": concise English meaning
+                            - "hindi": Hindi meaning in Devanagari script
+
+                            PDF text:
+                            {text}
+
+                            Return ONLY a valid JSON array. No markdown, no code blocks, no explanation.
+                            If no German words are found, return: []
+                            """)
+                            .param("text", pdfText.length() > 4000 ? pdfText.substring(0, 4000) : pdfText))
+                    .call()
+                    .content();
+            if (raw == null) throw new RuntimeException("Empty response from AI");
+            return parseCardsFromJson(extractJsonArray(raw.trim()));
+        } catch (Exception e) {
+            log.warn("AI text extraction failed: {}", e.getMessage());
+            throw new RuntimeException("AI text extraction failed: " + e.getMessage());
+        }
+    }
+
+    private List<Card> parseCardsFromJson(String json) throws Exception {
+        JsonNode arr = objectMapper.readTree(json);
+        List<Card> cards = new ArrayList<>();
+        for (JsonNode node : arr) {
+            String article = node.path("article").isNull() ? null : node.path("article").asText(null);
+            cards.add(new Card(
+                    null,
+                    node.path("type").asText("noun"),
+                    (article != null && article.isBlank()) ? null : article,
+                    node.path("word").asText(""),
+                    node.path("english").asText(""),
+                    node.path("hindi").asText(""),
+                    null
+            ));
+        }
+        return cards;
     }
 
     private String extractJsonArray(String text) {

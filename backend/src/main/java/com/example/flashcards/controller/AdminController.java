@@ -3,9 +3,11 @@ package com.example.flashcards.controller;
 import com.example.flashcards.model.Card;
 import com.example.flashcards.model.Chapter;
 import com.example.flashcards.model.ChapterSummary;
+import com.example.flashcards.model.VocabRequestDto;
 import com.example.flashcards.service.AiService;
 import com.example.flashcards.service.ChapterService;
 import com.example.flashcards.service.PdfParsingService;
+import com.example.flashcards.service.VocabRequestService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.ResponseEntity;
@@ -29,13 +31,16 @@ public class AdminController {
     private final ChapterService chapterService;
     private final PdfParsingService pdfParsingService;
     private final AiService aiService;
+    private final VocabRequestService vocabRequestService;
     private final ObjectMapper objectMapper;
 
     public AdminController(ChapterService chapterService, PdfParsingService pdfParsingService,
-                           AiService aiService, ObjectMapper objectMapper) {
+                           AiService aiService, VocabRequestService vocabRequestService,
+                           ObjectMapper objectMapper) {
         this.chapterService = chapterService;
         this.pdfParsingService = pdfParsingService;
         this.aiService = aiService;
+        this.vocabRequestService = vocabRequestService;
         this.objectMapper = objectMapper;
     }
 
@@ -97,6 +102,26 @@ public class AdminController {
         return chapterService.appendCards(chapterId, newCards);
     }
 
+    @GetMapping("/vocab-requests")
+    public List<VocabRequestDto> getPendingRequests() {
+        return vocabRequestService.getPendingRequests();
+    }
+
+    @PostMapping("/vocab-requests/{id}/approve")
+    public Chapter approveRequest(@PathVariable Long id, @RequestBody ApproveRequestBody body) {
+        try {
+            return vocabRequestService.approveRequest(id, body.chapterId());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Approve failed: " + e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/vocab-requests/{id}")
+    public ResponseEntity<Void> rejectRequest(@PathVariable Long id) {
+        vocabRequestService.rejectRequest(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @DeleteMapping("/chapters/{chapterId}")
     public ResponseEntity<Void> deleteChapter(@PathVariable String chapterId) {
         chapterService.deleteChapter(chapterId);
@@ -115,4 +140,5 @@ public class AdminController {
 
     public record SaveChapterRequest(String level, String title, String theme, List<Card> cards) {}
     public record AiTranslateRequest(List<String> words) {}
+    public record ApproveRequestBody(String chapterId) {}
 }

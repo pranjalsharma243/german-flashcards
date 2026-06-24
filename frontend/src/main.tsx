@@ -26,7 +26,8 @@ type ChapterSummary = Omit<Chapter, 'cards'> & { cardCount: number };
 type ProgressState = { chapterId: string; knownCardIds: string[]; practiceCardIds: string[]; updatedAt?: string };
 type AuthSession = { token: string; username: string; role: string };
 type ThemeMode = 'light' | 'dark';
-type Mode = 'dashboard' | 'cards' | 'quiz' | 'mcq' | 'articles' | 'grammar' | 'list' | 'admin';
+type Mode = 'dashboard' | 'cards' | 'quiz' | 'mcq' | 'articles' | 'grammar' | 'list' | 'admin' | 'contribute';
+type VocabRequest = { id: number; submittedBy: string; status: string; sourceType: string; cards: CardItem[]; createdAt: string };
 type SrsEntry = { cardId: string; interval: number; nextReview: number; reps: number };
 type SrsData = Record<string, SrsEntry>;
 type XpData = { xp: number; streak: number; lastStudyDate: string; todayXp: number };
@@ -782,6 +783,7 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
     { v: 'articles', icon: <GraduationCap className="h-4 w-4" />, l: 'Articles' },
     { v: 'grammar', icon: <PenLine className="h-4 w-4" />, l: 'Grammar' },
     { v: 'list', icon: <Library className="h-4 w-4" />, l: 'Library' },
+    { v: 'contribute', icon: <Upload className="h-4 w-4" />, l: 'Contribute' },
     ...(auth.role === 'ADMIN' ? [{ v: 'admin' as Mode, icon: <Settings className="h-4 w-4" />, l: 'Admin' }] : []),
   ];
 
@@ -1592,6 +1594,11 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
                 fetchJson<ChapterSummary[]>(`${API}/chapters`, auth.token).then(d => { setChapters(d); if (d[0]) setSelId(d[0].id); });
               }} />
             )}
+
+            {/* Contribute */}
+            {!loading && mode === 'contribute' && (
+              <ContributePanel token={auth.token} />
+            )}
           </div>
         </div>
 
@@ -1785,7 +1792,7 @@ function LibraryView({ cards, knownIds, practiceIds, speakGerman, mark, isAdmin,
 
 /* ═══════════════ ADMIN PANEL ═══════════════ */
 
-type AdminTab = 'chapters' | 'json' | 'pdf' | 'ai';
+type AdminTab = 'chapters' | 'json' | 'pdf' | 'ai' | 'requests';
 
 function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: () => void }) {
   const [tab, setTab] = React.useState<AdminTab>('chapters');
@@ -1810,6 +1817,13 @@ function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: 
   const [pdfParsing, setPdfParsing] = React.useState(false);
   const [pdfSaving, setPdfSaving] = React.useState(false);
 
+  // Vocab Requests state (admin)
+  const [requests, setRequests] = React.useState<VocabRequest[]>([]);
+  const [reqLoading, setReqLoading] = React.useState(false);
+  const [expandedReq, setExpandedReq] = React.useState<number | null>(null);
+  const [approveChapter, setApproveChapter] = React.useState<Record<number, string>>({});
+  const [approvingId, setApprovingId] = React.useState<number | null>(null);
+
   // AI Import state
   const [aiWords, setAiWords] = React.useState('');
   const [aiCards, setAiCards] = React.useState<CardItem[]>([]);
@@ -1829,7 +1843,38 @@ function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: 
       .finally(() => setLoading(false));
   }
 
+  function loadRequests() {
+    setReqLoading(true);
+    fetchJson<VocabRequest[]>(`${API}/admin/vocab-requests`, token)
+      .then(setRequests)
+      .catch(() => setErr('Failed to load requests'))
+      .finally(() => setReqLoading(false));
+  }
+
+  function approveRequest(id: number) {
+    const chapterId = approveChapter[id];
+    if (!chapterId) { setErr('Chapter select karo pehle'); return; }
+    setApprovingId(id); setErr(''); setMsg('');
+    fetch(`${API}/admin/vocab-requests/${id}/approve`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chapterId }),
+    })
+      .then(async r => { if (!r.ok) throw new Error(await r.text()); return r.json(); })
+      .then(() => { setMsg('Words chapter mein add ho gaye!'); loadRequests(); onChapterSaved(); })
+      .catch(ex => setErr(ex.message || 'Approve failed'))
+      .finally(() => setApprovingId(null));
+  }
+
+  function rejectRequest(id: number) {
+    if (!confirm('Is request ko reject karna hai?')) return;
+    fetch(`${API}/admin/vocab-requests/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      .then(r => { if (!r.ok) throw new Error(); setMsg('Request reject ho gayi'); loadRequests(); })
+      .catch(() => setErr('Reject failed'));
+  }
+
   React.useEffect(() => { loadChapters(); }, []);
+  React.useEffect(() => { if (tab === 'requests') loadRequests(); }, [tab]);
 
   function deleteChapter(id: string) {
     if (!confirm(`Delete chapter "${id}"? This cannot be undone.`)) return;
@@ -1954,11 +1999,12 @@ function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: 
       {err && <div className="animate-fade-up rounded-lg border border-destructive/20 bg-destructive/8 p-3 text-xs font-medium text-destructive">{err}</div>}
 
       <Tabs value={tab} onValueChange={v => setTab(v as AdminTab)}>
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="chapters">Chapters</TabsTrigger>
           <TabsTrigger value="json">JSON</TabsTrigger>
           <TabsTrigger value="pdf">PDF</TabsTrigger>
           <TabsTrigger value="ai">AI Import</TabsTrigger>
+          <TabsTrigger value="requests">Requests</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -2258,6 +2304,223 @@ function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: 
           )}
         </div>
       )}
+      {/* Requests tab */}
+      {tab === 'requests' && (
+        <div className="grid gap-4">
+          <Card className="glass-panel rounded-xl">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-sm font-bold">Pending Vocab Requests</h2>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">Users ne screenshot/PDF se words submit kiye hain — chapter choose karke approve karo</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="muted" className="text-[10px]">{requests.filter(r => r.status === 'PENDING').length} pending</Badge>
+                  <Button size="sm" variant="outline" onClick={loadRequests} disabled={reqLoading} className="h-7 text-xs">
+                    {reqLoading ? <span className="h-3 w-3 animate-spin rounded-full border border-muted border-t-primary" /> : <RotateCcw className="h-3 w-3" />}
+                  </Button>
+                </div>
+              </div>
+
+              {reqLoading ? (
+                <div className="grid place-items-center p-8"><div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" /></div>
+              ) : requests.length === 0 ? (
+                <div className="rounded-lg border border-dashed bg-muted/20 p-6 text-center text-xs text-muted-foreground">Koi pending request nahi hai</div>
+              ) : (
+                <div className="grid gap-3">
+                  {requests.map(req => (
+                    <div key={req.id} className={cn('rounded-xl border transition-all', req.status === 'PENDING' ? 'border-primary/20 bg-primary/4 dark:bg-primary/8' : req.status === 'APPROVED' ? 'border-accent/20 bg-accent/4' : 'border-muted bg-muted/10 opacity-60')}>
+                      <div className="flex items-center justify-between gap-3 p-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={cn('grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xs font-bold', req.sourceType === 'IMAGE' ? 'bg-secondary/15 text-secondary-foreground' : 'bg-primary/10 text-primary')}>
+                            {req.sourceType === 'IMAGE' ? '🖼' : '📄'}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold truncate">{req.submittedBy}</p>
+                            <p className="text-[10px] text-muted-foreground">{req.cards.length} words · {new Date(req.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge variant={req.status === 'PENDING' ? 'secondary' : req.status === 'APPROVED' ? 'success' : 'destructive'} className="text-[9px] uppercase">{req.status}</Badge>
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setExpandedReq(expandedReq === req.id ? null : req.id)}>
+                            {expandedReq === req.id ? 'Hide' : 'Review'}
+                          </Button>
+                        </div>
+                      </div>
+
+                      {expandedReq === req.id && (
+                        <div className="border-t px-4 pb-4 dark:border-white/10">
+                          <div className="mt-3 max-h-52 overflow-y-auto rounded-lg border dark:border-white/10">
+                            <table className="w-full text-xs">
+                              <thead className="sticky top-0 bg-muted/80 backdrop-blur dark:bg-slate-900/80">
+                                <tr>{['#', 'Type', 'Article', 'Word', 'English', 'Hindi'].map(h => <th key={h} className="p-2 text-left font-medium">{h}</th>)}</tr>
+                              </thead>
+                              <tbody>
+                                {req.cards.map((c, i) => (
+                                  <tr key={i} className="border-t dark:border-white/10">
+                                    <td className="p-2 text-muted-foreground">{i + 1}</td>
+                                    <td className="p-2">{c.type}</td>
+                                    <td className="p-2 text-destructive font-medium">{c.article ?? '—'}</td>
+                                    <td className="p-2 font-semibold">{c.word}</td>
+                                    <td className="p-2 text-muted-foreground">{c.english}</td>
+                                    <td className="p-2 text-muted-foreground">{c.hindi}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {req.status === 'PENDING' && (
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <Select value={approveChapter[req.id] ?? ''} onValueChange={v => setApproveChapter(prev => ({ ...prev, [req.id]: v }))}>
+                                <SelectTrigger className="h-8 flex-1 min-w-[180px] text-xs bg-white/80 dark:border-white/10 dark:bg-slate-950/70"><SelectValue placeholder="Chapter choose karo..." /></SelectTrigger>
+                                <SelectContent>{chapters.map(c => <SelectItem key={c.id} value={c.id}>{c.level} · {c.title}</SelectItem>)}</SelectContent>
+                              </Select>
+                              <Button size="sm" className="h-8 text-xs bg-accent hover:bg-accent/90" onClick={() => approveRequest(req.id)} disabled={approvingId === req.id || !approveChapter[req.id]}>
+                                {approvingId === req.id ? <span className="h-3 w-3 animate-spin rounded-full border border-white/40 border-t-white" /> : <Check className="h-3.5 w-3.5" />} Approve
+                              </Button>
+                              <Button size="sm" variant="destructive" className="h-8 text-xs" onClick={() => rejectRequest(req.id)}>
+                                <X className="h-3.5 w-3.5" /> Reject
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* ═══════════════ CONTRIBUTE PANEL ═══════════════ */
+
+function ContributePanel({ token }: { token: string }) {
+  const [file, setFile] = React.useState<File | null>(null);
+  const [uploading, setUploading] = React.useState(false);
+  const [result, setResult] = React.useState<VocabRequest | null>(null);
+  const [myRequests, setMyRequests] = React.useState<VocabRequest[]>([]);
+  const [err, setErr] = React.useState('');
+  const [loadingHistory, setLoadingHistory] = React.useState(true);
+
+  React.useEffect(() => {
+    fetchJson<VocabRequest[]>(`${API}/vocab-requests/mine`, token)
+      .then(setMyRequests)
+      .catch(() => {})
+      .finally(() => setLoadingHistory(false));
+  }, [result]);
+
+  function uploadFile() {
+    if (!file) return;
+    setUploading(true); setErr(''); setResult(null);
+    const fd = new FormData();
+    fd.append('file', file);
+    fetch(`${API}/vocab-requests/upload`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd })
+      .then(async r => {
+        if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'Upload failed'); }
+        return r.json() as Promise<VocabRequest>;
+      })
+      .then(r => { setResult(r); setFile(null); })
+      .catch(ex => setErr(ex.message || 'Upload failed'))
+      .finally(() => setUploading(false));
+  }
+
+  const statusColor = (s: string) => s === 'PENDING' ? 'text-amber-600 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400' : s === 'APPROVED' ? 'text-accent bg-accent/8' : 'text-destructive bg-destructive/8';
+
+  return (
+    <section className="grid gap-4 animate-fade-up pb-6 max-w-2xl mx-auto w-full">
+      <div>
+        <h1 className="text-xl font-bold">Contribute Vocabulary</h1>
+        <p className="mt-0.5 text-xs text-muted-foreground">Screenshot ya PDF upload karo — AI German words dhundh ke translate karega, admin approve karega</p>
+      </div>
+
+      {err && <div className="animate-fade-up rounded-lg border border-destructive/20 bg-destructive/8 p-3 text-xs font-medium text-destructive">{err}</div>}
+
+      <Card className="glass-panel rounded-xl">
+        <CardContent className="p-5 grid gap-4">
+          <div>
+            <p className="text-xs font-semibold mb-2">Screenshot ya PDF choose karo</p>
+            <div className="relative">
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,application/pdf"
+                onChange={e => { setFile(e.target.files?.[0] ?? null); setResult(null); setErr(''); }}
+                className="absolute inset-0 z-10 cursor-pointer opacity-0"
+              />
+              <div className={cn('flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-8 text-center transition-colors', file ? 'border-primary/40 bg-primary/4' : 'border-muted-foreground/20 hover:bg-muted/20')}>
+                <div className="text-3xl">{file ? (file.type.startsWith('image') ? '🖼️' : '📄') : '📎'}</div>
+                <p className="text-xs font-medium text-muted-foreground">{file ? file.name : 'Click to upload — PNG, JPG, WebP ya PDF'}</p>
+                {file && <p className="text-[10px] text-muted-foreground">{(file.size / 1024).toFixed(0)} KB</p>}
+              </div>
+            </div>
+          </div>
+          <Button onClick={uploadFile} disabled={!file || uploading}>
+            {uploading
+              ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> AI extract kar raha hai...</>
+              : <><Sparkles className="h-4 w-4" /> Extract & Submit</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {result && (
+        <Card className="glass-panel rounded-xl animate-scale-in border-accent/30">
+          <CardContent className="p-5 grid gap-3">
+            <div className="flex items-center gap-2">
+              <div className="grid h-8 w-8 place-items-center rounded-lg bg-accent/10 text-accent"><Check className="h-4 w-4" /></div>
+              <div>
+                <p className="text-sm font-bold text-accent">Submit ho gaya!</p>
+                <p className="text-[11px] text-muted-foreground">{result.cards.length} words mili — admin review karega aur chapter mein add kar dega</p>
+              </div>
+            </div>
+            <div className="max-h-48 overflow-y-auto rounded-lg border text-xs dark:border-white/10">
+              <table className="w-full">
+                <thead className="sticky top-0 bg-muted/80 backdrop-blur"><tr>{['Word', 'English', 'Hindi'].map(h => <th key={h} className="p-2 text-left font-medium">{h}</th>)}</tr></thead>
+                <tbody>
+                  {result.cards.map((c, i) => (
+                    <tr key={i} className="border-t dark:border-white/10">
+                      <td className="p-2 font-semibold">{c.article ? <span className="text-destructive mr-1">{c.article}</span> : null}{c.word}</td>
+                      <td className="p-2 text-muted-foreground">{c.english}</td>
+                      <td className="p-2 text-muted-foreground">{c.hindi}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* My submission history */}
+      <Card className="glass-panel rounded-xl">
+        <CardContent className="p-5">
+          <h2 className="text-sm font-bold mb-3">Meri Submissions</h2>
+          {loadingHistory ? (
+            <div className="grid place-items-center p-4"><div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" /></div>
+          ) : myRequests.length === 0 ? (
+            <div className="rounded-lg border border-dashed bg-muted/20 p-4 text-center text-xs text-muted-foreground">Abhi tak kuch submit nahi kiya</div>
+          ) : (
+            <div className="grid gap-2">
+              {myRequests.map(r => (
+                <div key={r.id} className="flex items-center justify-between rounded-lg border bg-white/50 p-3 dark:border-white/10 dark:bg-slate-950/55">
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm">{r.sourceType === 'IMAGE' ? '🖼' : '📄'}</span>
+                      <span className="text-xs font-medium">{r.cards.length} words</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                  </div>
+                  <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', statusColor(r.status))}>{r.status}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </section>
   );
 }
