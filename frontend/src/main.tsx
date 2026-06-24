@@ -844,13 +844,14 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
               </Select>
             </div>
 
-            <nav className="hidden flex-1 justify-center md:flex">
-              <div className="inline-flex gap-0.5 rounded-lg bg-muted/40 p-0.5">
+            <nav className="hidden min-w-0 flex-1 justify-center overflow-x-auto md:flex">
+              <div className="inline-flex shrink-0 gap-0.5 rounded-lg bg-muted/40 p-0.5">
                 {navs.map(n => (
                   <button key={n.v} onClick={() => { setMode(n.v); setMobMenu(false); }}
-                    className={cn('flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all',
+                    title={n.l}
+                    className={cn('flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium transition-all',
                       mode === n.v ? 'bg-white text-foreground shadow-sm dark:bg-slate-900 dark:text-white' : 'text-muted-foreground hover:text-foreground')}>
-                    {n.icon}<span>{n.l}</span>
+                    {n.icon}<span className="hidden lg:inline">{n.l}</span>
                   </button>
                 ))}
               </div>
