@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.core.io.ByteArrayResource;
@@ -101,6 +102,7 @@ public class AiService {
                 .collect(Collectors.joining("\n"));
         try {
             String raw = chatClient.prompt()
+                    .options(OpenAiChatOptions.builder().maxTokens(2000).build())
                     .user(u -> u.text("""
                             Translate these German words to English and Hindi.
                             For each word return a JSON object with:
@@ -152,6 +154,7 @@ public class AiService {
         if (!enabled) throw new IllegalStateException("AI is not configured");
         try {
             String raw = chatClient.prompt()
+                    .options(OpenAiChatOptions.builder().maxTokens(2000).build())
                     .user(u -> u.text("""
                             Look at this image. Find ALL German words or vocabulary items visible.
                             For each German word, return a JSON object with:
@@ -179,6 +182,7 @@ public class AiService {
         if (!enabled) throw new IllegalStateException("AI is not configured");
         try {
             String raw = chatClient.prompt()
+                    .options(OpenAiChatOptions.builder().maxTokens(2000).build())
                     .user(u -> u.text("""
                             The following text was extracted from a PDF. Find ALL German words or vocabulary items in it.
                             For each German word, return a JSON object with:
