@@ -552,6 +552,7 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
   const [gramSentence, setGramSentence] = React.useState<GeneratedSentence | null>(null);
   const [aiHint, setAiHint] = React.useState<string | null>(null);
   const [aiHintLoading, setAiHintLoading] = React.useState(false);
+  const [levelFilter, setLevelFilter] = React.useState('all');
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [mobMenu, setMobMenu] = React.useState(false);
@@ -566,6 +567,21 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
       .catch(ex => apiErr(ex, () => setError('Cannot connect to backend.')))
       .finally(() => setLoading(false));
   }, []);
+
+  const levels = React.useMemo(() => {
+    const order = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+    const unique = [...new Set(chapters.map(c => c.level))];
+    return unique.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  }, [chapters]);
+
+  const visibleChapters = React.useMemo(() =>
+    levelFilter === 'all' ? chapters : chapters.filter(c => c.level === levelFilter),
+  [chapters, levelFilter]);
+
+  React.useEffect(() => {
+    if (visibleChapters.length && !visibleChapters.find(c => c.id === selId))
+      setSelId(visibleChapters[0].id);
+  }, [levelFilter, visibleChapters]);
 
   React.useEffect(() => {
     if (!selId) return; setLoading(true);
@@ -805,10 +821,19 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
               <span className="hidden text-sm font-bold sm:block">Deutsch Meister</span>
             </div>
 
-            <div className="hidden min-w-[180px] max-w-[240px] md:block">
+            <div className="hidden items-center gap-1.5 md:flex">
+              <div className="flex gap-0.5 rounded-md border bg-muted/30 p-0.5 dark:border-white/10">
+                {['all', ...levels].map(lv => (
+                  <button key={lv} onClick={() => setLevelFilter(lv)}
+                    className={cn('rounded px-2 py-0.5 text-[10px] font-bold uppercase transition-all',
+                      levelFilter === lv ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+                    {lv === 'all' ? 'All' : lv}
+                  </button>
+                ))}
+              </div>
               <Select value={selId} onValueChange={setSelId}>
-                <SelectTrigger className="h-9 bg-white/80 text-xs dark:border-white/10 dark:bg-slate-950/70"><SelectValue /></SelectTrigger>
-                <SelectContent>{chapters.map(c => <SelectItem key={c.id} value={c.id}>{c.level} &middot; {c.title}</SelectItem>)}</SelectContent>
+                <SelectTrigger className="h-9 min-w-[140px] max-w-[200px] bg-white/80 text-xs dark:border-white/10 dark:bg-slate-950/70"><SelectValue /></SelectTrigger>
+                <SelectContent>{visibleChapters.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}</SelectContent>
               </Select>
             </div>
 
@@ -857,7 +882,16 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
           </div>
           {mobMenu && (
             <div className="absolute inset-x-0 top-full z-50 animate-fade-down border-b bg-white/95 p-3 shadow-sm backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/90 md:hidden">
-              <Select value={selId} onValueChange={setSelId}><SelectTrigger className="mb-2 bg-white/80 dark:border-white/10 dark:bg-slate-950/70"><SelectValue /></SelectTrigger><SelectContent>{chapters.map(c => <SelectItem key={c.id} value={c.id}>{c.level} &middot; {c.title}</SelectItem>)}</SelectContent></Select>
+              <div className="mb-2 flex gap-0.5 rounded-md border bg-muted/30 p-0.5 dark:border-white/10">
+                {['all', ...levels].map(lv => (
+                  <button key={lv} onClick={() => setLevelFilter(lv)}
+                    className={cn('flex-1 rounded px-1.5 py-1 text-[10px] font-bold uppercase transition-all',
+                      levelFilter === lv ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground')}>
+                    {lv === 'all' ? 'All' : lv}
+                  </button>
+                ))}
+              </div>
+              <Select value={selId} onValueChange={setSelId}><SelectTrigger className="mb-2 bg-white/80 dark:border-white/10 dark:bg-slate-950/70"><SelectValue /></SelectTrigger><SelectContent>{visibleChapters.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}</SelectContent></Select>
               <div className={cn('grid gap-1.5', navs.length > 7 ? 'grid-cols-8' : navs.length > 6 ? 'grid-cols-7' : navs.length > 5 ? 'grid-cols-6' : navs.length > 4 ? 'grid-cols-5' : 'grid-cols-4')}>
                 {navs.map(n => (
                   <button key={n.v} onClick={() => { setMode(n.v); setMobMenu(false); }}
@@ -2056,7 +2090,7 @@ function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: 
               <div className="grid gap-3 sm:grid-cols-3">
                 <label className="grid gap-1.5">
                   <span className="text-xs font-medium">Level <span className="text-destructive">*</span></span>
-                  <Input value={jsonLevel} onChange={e => setJsonLevel(e.target.value)} placeholder="e.g. B1.1" required />
+                  <Select value={jsonLevel} onValueChange={setJsonLevel} required><SelectTrigger className="text-xs"><SelectValue placeholder="Select level" /></SelectTrigger><SelectContent>{['A1','A2','B1','B2','C1','C2'].map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent></Select>
                 </label>
                 <label className="grid gap-1.5">
                   <span className="text-xs font-medium">Title <span className="text-destructive">*</span></span>
@@ -2136,7 +2170,7 @@ function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: 
                   <div className="grid gap-3 sm:grid-cols-3">
                     <label className="grid gap-1.5">
                       <span className="text-xs font-medium">Level <span className="text-destructive">*</span></span>
-                      <Input value={pdfLevel} onChange={e => setPdfLevel(e.target.value)} placeholder="e.g. A1" required />
+                      <Select value={pdfLevel} onValueChange={setPdfLevel} required><SelectTrigger className="text-xs"><SelectValue placeholder="Select level" /></SelectTrigger><SelectContent>{['A1','A2','B1','B2','C1','C2'].map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent></Select>
                     </label>
                     <label className="grid gap-1.5">
                       <span className="text-xs font-medium">Title <span className="text-destructive">*</span></span>
@@ -2279,7 +2313,7 @@ function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: 
                       <div className="grid gap-3 sm:grid-cols-3">
                         <label className="grid gap-1.5">
                           <span className="text-xs font-medium">Level <span className="text-destructive">*</span></span>
-                          <Input value={aiLevel} onChange={e => setAiLevel(e.target.value)} placeholder="e.g. B1.1" />
+                          <Select value={aiLevel} onValueChange={setAiLevel}><SelectTrigger className="text-xs"><SelectValue placeholder="Select level" /></SelectTrigger><SelectContent>{['A1','A2','B1','B2','C1','C2'].map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent></Select>
                         </label>
                         <label className="grid gap-1.5">
                           <span className="text-xs font-medium">Title <span className="text-destructive">*</span></span>
