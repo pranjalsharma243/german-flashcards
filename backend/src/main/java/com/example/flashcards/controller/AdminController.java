@@ -102,6 +102,11 @@ public class AdminController {
         return chapterService.appendCards(chapterId, newCards);
     }
 
+    @PostMapping("/chapters/{chapterId}/cards/batch")
+    public Chapter batchAddCards(@PathVariable String chapterId, @RequestBody List<Card> cards) {
+        return chapterService.appendCards(chapterId, cards);
+    }
+
     @GetMapping("/vocab-requests")
     public List<VocabRequestDto> getPendingRequests() {
         return vocabRequestService.getPendingRequests();

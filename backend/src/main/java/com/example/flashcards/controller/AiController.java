@@ -7,6 +7,10 @@ import com.example.flashcards.model.ChatResponse;
 import com.example.flashcards.model.HintRequest;
 import com.example.flashcards.model.StoryRequest;
 import com.example.flashcards.model.StoryResponse;
+import com.example.flashcards.model.WritingFeedbackRequest;
+import com.example.flashcards.model.WritingFeedbackResponse;
+import com.example.flashcards.model.CardGenerateRequest;
+import com.example.flashcards.model.CardGenerateResponse;
 import com.example.flashcards.repository.CardRepository;
 import com.example.flashcards.service.AiService;
 import jakarta.validation.Valid;
@@ -90,6 +94,21 @@ public class AiController {
         var card = cardRepository.findById(cardId)
                 .orElseThrow(() -> new NoSuchElementException("Card not found: " + cardId));
         return aiService.generateSentence(cardId, card.getWord(), card.getArticle(), card.getEnglish());
+    }
+
+    @PostMapping("/writing/feedback")
+    public WritingFeedbackResponse writingFeedback(@Valid @RequestBody WritingFeedbackRequest request) {
+        return aiService.analyzeWriting(request.prompt(), request.userText());
+    }
+
+    /**
+     * POST /api/ai/cards/generate
+     * Admin-only: generate vocabulary cards from a topic, returns draft list (not saved).
+     */
+    @PostMapping("/cards/generate")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
+    public CardGenerateResponse generateCards(@Valid @RequestBody CardGenerateRequest request) {
+        return aiService.generateCards(request.topic(), request.chapterId(), request.count());
     }
 
     @org.springframework.web.bind.annotation.ExceptionHandler(NoSuchElementException.class)

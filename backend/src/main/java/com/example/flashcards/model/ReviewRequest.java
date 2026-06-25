@@ -1,0 +1,9 @@
+package com.example.flashcards.model;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+
+public record ReviewRequest(
+    @NotNull @Min(1) @Max(4) Integer rating
+) {}

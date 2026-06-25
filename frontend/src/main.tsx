@@ -26,11 +26,28 @@ type ChapterSummary = Omit<Chapter, 'cards'> & { cardCount: number };
 type ProgressState = { chapterId: string; knownCardIds: string[]; practiceCardIds: string[]; updatedAt?: string };
 type AuthSession = { token: string; username: string; role: string };
 type ThemeMode = 'light' | 'dark';
-type Mode = 'dashboard' | 'cards' | 'quiz' | 'mcq' | 'articles' | 'grammar' | 'list' | 'admin' | 'contribute' | 'chat' | 'story';
+type Mode = 'dashboard' | 'cards' | 'quiz' | 'mcq' | 'articles' | 'grammar' | 'list' | 'admin' | 'contribute' | 'chat' | 'story' | 'fsrs' | 'cloze' | 'write' | 'listen';
+type FsrsQueueItem = {
+  cardId: string; chapterId: string; type: string; article?: string; word: string; english: string; hindi: string;
+  isNew: boolean; stability?: number; difficulty?: number; reps?: number; lapses?: number; state?: string;
+  dueAt?: string; previewIntervals: number[];
+};
+type FsrsRating = 1 | 2 | 3 | 4;
 type ChatMsg = { role: 'user' | 'assistant'; content: string; ts: number };
 type VocabRequest = { id: number; submittedBy: string; status: string; sourceType: string; cards: CardItem[]; createdAt: string };
 type SrsEntry = { cardId: string; interval: number; nextReview: number; reps: number };
 type SrsData = Record<string, SrsEntry>;
+type ChapterStat = { dueNow: number; totalCards: number; reviewedCards: number; avgStability: number; avgDifficulty: number };
+type ServerStats = {
+  totalReviews: number; currentStreak: number; longestStreak: number; averageRetention: number;
+  dailyActivity: Record<string, number>;
+  forecast: Array<{ date: string; dueCount: number }>;
+  perChapter?: Record<string, ChapterStat>;
+};
+type OptimizerResult = {
+  totalReviews: number; estimatedRetention: number; suggestedDesiredRetention: number;
+  intervalMultiplier: number; enoughData: boolean; advice: string;
+};
 type XpData = { xp: number; streak: number; lastStudyDate: string; todayXp: number };
 type AnswerLanguage = 'english' | 'hindi';
 type AuthMode = 'login' | 'register';
@@ -47,6 +64,15 @@ function App() {
   const [view, setView] = React.useState<AppView>(() => storedAuth() ? 'app' : 'landing');
   const [authMode, setAuthMode] = React.useState<AuthMode>('login');
   const [theme, setTheme] = React.useState<ThemeMode>(() => storedTheme());
+  const [isOnline, setIsOnline] = React.useState(navigator.onLine);
+
+  React.useEffect(() => {
+    const on = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
 
   React.useEffect(() => {
     applyTheme(theme);
@@ -60,7 +86,16 @@ function App() {
 
   if (view === 'landing') return <LandingPage onLogin={() => goAuth('login')} onRegister={() => goAuth('register')} />;
   if (view === 'auth' || !auth) return <AuthScreen initialMode={authMode} onSuccess={login} onBack={() => setView('landing')} />;
-  return <MainApp auth={auth} onLogout={logout} theme={theme} onToggleTheme={toggleTheme} />;
+  return (
+    <>
+      {!isOnline && (
+        <div className="fixed top-0 inset-x-0 z-[100] flex items-center justify-center gap-2 bg-amber-500 py-1.5 text-[11px] font-semibold text-white">
+          <span>⚠️</span> You are offline — reviews and AI features require a connection
+        </div>
+      )}
+      <MainApp auth={auth} onLogout={logout} theme={theme} onToggleTheme={toggleTheme} />
+    </>
+  );
 }
 
 /* ═══════════════ LANDING PAGE ═══════════════ */
@@ -529,7 +564,7 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
   const [mode, setMode] = React.useState<Mode>('dashboard');
   const [query, setQuery] = React.useState('');
   const [typeFilter, setTypeFilter] = React.useState(ALL);
-  const [ansLang, setAnsLang] = React.useState<AnswerLanguage>('hindi');
+  const [ansLang, setAnsLang] = React.useState<AnswerLanguage>(() => (localStorage.getItem('pref-ans-lang') as AnswerLanguage) ?? 'hindi');
   const [idx, setIdx] = React.useState(0);
   const [flipped, setFlipped] = React.useState(false);
   const [qInput, setQInput] = React.useState('');
@@ -564,6 +599,8 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
     { role: 'assistant', content: 'Hallo! 👋 Ich bin **Deutschi**, dein German tutor!\n\nAsk me anything about German — vocabulary, grammar, articles (der/die/das), or just chat in German. I can also quiz you on your flashcard vocabulary!\n\n**Try asking:**\n- "Explain der/die/das"\n- "Quiz me on 5 words"\n- "How do I use Akkusativ?"', ts: Date.now() }
   ]);
   const [chatLoading, setChatLoading] = React.useState(false);
+  const [serverStats, setServerStats] = React.useState<ServerStats | null>(null);
+  const [optimizerResult, setOptimizerResult] = React.useState<OptimizerResult | null>(null);
 
   React.useEffect(() => {
     setLoading(true);
@@ -796,16 +833,31 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
 
   const dueCount = React.useMemo(() => countDueCards(all, srsData), [all, srsData]);
 
+  React.useEffect(() => {
+    if (mode !== 'dashboard') return;
+    fetchJson<ServerStats>(`${API}/review/stats`, auth.token)
+      .then(setServerStats)
+      .catch(() => {});
+    fetchJson<OptimizerResult>(`${API}/review/optimizer`, auth.token)
+      .then(setOptimizerResult)
+      .catch(() => {});
+  }, [mode, selId]);
+
+  // Mobile bottom bar shows first 5; order matters — highest-priority features first
   const navs: { v: Mode; icon: React.ReactNode; l: string }[] = [
     { v: 'dashboard', icon: <LayoutDashboard className="h-4 w-4" />, l: 'Home' },
+    { v: 'fsrs', icon: <Zap className="h-4 w-4" />, l: 'Review' },
     { v: 'cards', icon: <BookOpen className="h-4 w-4" />, l: 'Cards' },
+    { v: 'chat', icon: <MessageSquare className="h-4 w-4" />, l: 'AI Chat' },
     { v: 'quiz', icon: <Brain className="h-4 w-4" />, l: 'Quiz' },
     { v: 'mcq', icon: <Target className="h-4 w-4" />, l: 'MCQ' },
     { v: 'articles', icon: <GraduationCap className="h-4 w-4" />, l: 'Articles' },
     { v: 'grammar', icon: <PenLine className="h-4 w-4" />, l: 'Grammar' },
     { v: 'list', icon: <Library className="h-4 w-4" />, l: 'Library' },
-    { v: 'chat', icon: <MessageSquare className="h-4 w-4" />, l: 'AI Chat' },
+    { v: 'cloze', icon: <PenLine className="h-4 w-4" />, l: 'Cloze' },
+    { v: 'write', icon: <FileText className="h-4 w-4" />, l: 'Write' },
     { v: 'story', icon: <Sparkles className="h-4 w-4" />, l: 'Story' },
+    { v: 'listen', icon: <Headphones className="h-4 w-4" />, l: 'Listen' },
     { v: 'contribute', icon: <Upload className="h-4 w-4" />, l: 'Contribute' },
     ...(auth.role === 'ADMIN' ? [{ v: 'admin' as Mode, icon: <Settings className="h-4 w-4" />, l: 'Admin' }] : []),
   ];
@@ -1150,6 +1202,132 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
                   </div>
                 </CardContent>
               </Card>
+              {/* FSRS Stats widget */}
+              {serverStats && serverStats.totalReviews > 0 && (
+                <div className="animate-fade-up stagger-5 grid gap-3">
+                  <Card className="glass-panel rounded-xl">
+                    <CardContent className="p-5">
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-sm font-bold">Review Statistics</h2>
+                        <Button size="sm" variant="outline" onClick={() => setMode('fsrs')} className="text-xs gap-1.5 h-7">
+                          <Zap className="h-3 w-3" /> Start Review
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {[
+                          { l: 'Total Reviews', v: serverStats.totalReviews, c: 'text-primary', bg: 'bg-primary/8' },
+                          { l: 'Streak', v: `${serverStats.currentStreak}d`, c: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-950/30' },
+                          { l: 'Retention', v: `${Math.round(serverStats.averageRetention * 100)}%`, c: 'text-accent', bg: 'bg-accent/8' },
+                          { l: 'Best Streak', v: `${serverStats.longestStreak}d`, c: 'text-secondary-foreground', bg: 'bg-secondary/10' },
+                        ].map(s => (
+                          <div key={s.l} className={cn('rounded-xl p-3 text-center', s.bg)}>
+                            <strong className={cn('block text-xl font-bold tabular-nums', s.c)}>{s.v}</strong>
+                            <span className="text-[10px] text-muted-foreground">{s.l}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Mini heatmap — last 28 days */}
+                      <div className="mt-4">
+                        <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Daily Activity (last 28 days)</p>
+                        <div className="grid grid-cols-28 gap-0.5" style={{ gridTemplateColumns: 'repeat(28, minmax(0,1fr))' }}>
+                          {Array.from({ length: 28 }, (_, i) => {
+                            const d = new Date(); d.setDate(d.getDate() - (27 - i));
+                            const key = d.toISOString().slice(0, 10);
+                            const count = serverStats.dailyActivity[key] ?? 0;
+                            const intensity = count === 0 ? 0 : count < 5 ? 1 : count < 15 ? 2 : 3;
+                            const cls = ['bg-muted/40', 'bg-primary/25', 'bg-primary/55', 'bg-primary'][intensity];
+                            return (
+                              <div key={key} title={`${key}: ${count} reviews`}
+                                className={cn('aspect-square rounded-sm', cls)} />
+                            );
+                          })}
+                        </div>
+                      </div>
+                      {/* Forecast */}
+                      {serverStats.forecast.length > 0 && (
+                        <div className="mt-4">
+                          <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">7-Day Forecast</p>
+                          <div className="grid grid-cols-7 gap-1">
+                            {serverStats.forecast.map(f => {
+                              const date = new Date(f.date);
+                              const dayName = date.toLocaleDateString('en', { weekday: 'short' }).slice(0, 2);
+                              const isToday = f.date === new Date().toISOString().slice(0, 10);
+                              return (
+                                <div key={f.date} className={cn('flex flex-col items-center gap-1 rounded-lg p-2', isToday ? 'bg-primary/8 ring-1 ring-primary/20' : 'bg-muted/20')}>
+                                  <span className="text-[9px] font-semibold text-muted-foreground uppercase">{dayName}</span>
+                                  <strong className={cn('text-sm font-bold tabular-nums', f.dueCount > 0 ? 'text-foreground' : 'text-muted-foreground/50')}>{f.dueCount}</strong>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* FSRS Optimizer */}
+                  {optimizerResult && (
+                    <Card className={cn('glass-panel rounded-xl', optimizerResult.enoughData ? 'border-primary/20' : 'border-dashed')}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Sparkles className="h-4 w-4 text-primary" />
+                          <span className="text-xs font-bold">FSRS Optimizer</span>
+                          {!optimizerResult.enoughData && <Badge variant="muted" className="text-[9px]">Need {50 - optimizerResult.totalReviews} more reviews</Badge>}
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{optimizerResult.advice}</p>
+                        {optimizerResult.enoughData && (
+                          <div className="mt-3 grid grid-cols-3 gap-2">
+                            <div className="rounded-lg bg-muted/30 p-2 text-center">
+                              <p className="text-[10px] text-muted-foreground">Observed</p>
+                              <p className="text-sm font-bold text-foreground">{Math.round(optimizerResult.estimatedRetention * 100)}%</p>
+                            </div>
+                            <div className="rounded-lg bg-primary/8 p-2 text-center">
+                              <p className="text-[10px] text-muted-foreground">Target</p>
+                              <p className="text-sm font-bold text-primary">{Math.round(optimizerResult.suggestedDesiredRetention * 100)}%</p>
+                            </div>
+                            <div className="rounded-lg bg-muted/30 p-2 text-center">
+                              <p className="text-[10px] text-muted-foreground">Multiplier</p>
+                              <p className="text-sm font-bold text-foreground">{optimizerResult.intervalMultiplier.toFixed(2)}×</p>
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
+
+              {/* Per-chapter FSRS breakdown */}
+              {serverStats?.perChapter && Object.keys(serverStats.perChapter).length > 0 && chapters.length > 0 && (
+                <div className="animate-fade-up">
+                  <Card className="glass-panel rounded-xl">
+                    <CardContent className="p-4">
+                      <p className="mb-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Chapter Progress (FSRS)</p>
+                      <div className="grid gap-2">
+                        {Object.entries(serverStats.perChapter).map(([cid, stat]) => {
+                          const ch = chapters.find(c => c.id === cid);
+                          if (!ch) return null;
+                          const pct = stat.totalCards > 0 ? Math.round((stat.reviewedCards / stat.totalCards) * 100) : 0;
+                          return (
+                            <div key={cid} className="grid gap-1">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <button onClick={() => { setSelId(cid); setMode('fsrs'); }} className="font-medium hover:text-primary transition-colors truncate max-w-[60%]">
+                                  {ch.title}
+                                </button>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {stat.dueNow > 0 && <Badge variant="destructive" className="text-[9px]">{stat.dueNow} due</Badge>}
+                                  <span className="text-muted-foreground">{stat.reviewedCards}/{stat.totalCards}</span>
+                                </div>
+                              </div>
+                              <Progress value={pct} className="h-1" />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
             </>}
 
             {/* Non-dashboard: toolbar */}
@@ -1170,8 +1348,8 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
                     <div className="relative"><Filter className="pointer-events-none absolute left-3 top-1/2 z-10 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" /><Select value={typeFilter} onValueChange={setTypeFilter}><SelectTrigger className="h-9 pl-8 text-xs"><SelectValue /></SelectTrigger><SelectContent>{types.map(t => <SelectItem key={t} value={t}>{t === ALL ? 'All types' : t}</SelectItem>)}</SelectContent></Select></div>
                     <div className="flex gap-1.5 flex-wrap items-center">
                       <div className="grid grid-cols-2 rounded-lg border bg-white/60 p-0.5 dark:border-white/10 dark:bg-slate-950/55">
-                        <Button variant={ansLang === 'hindi' ? 'secondary' : 'ghost'} size="sm" onClick={() => setAnsLang('hindi')} className="h-8 text-xs">Hindi</Button>
-                        <Button variant={ansLang === 'english' ? 'secondary' : 'ghost'} size="sm" onClick={() => setAnsLang('english')} className="h-8 text-xs">English</Button>
+                        <Button variant={ansLang === 'hindi' ? 'secondary' : 'ghost'} size="sm" onClick={() => { setAnsLang('hindi'); localStorage.setItem('pref-ans-lang', 'hindi'); }} className="h-8 text-xs">Hindi</Button>
+                        <Button variant={ansLang === 'english' ? 'secondary' : 'ghost'} size="sm" onClick={() => { setAnsLang('english'); localStorage.setItem('pref-ans-lang', 'english'); }} className="h-8 text-xs">English</Button>
                       </div>
                       {(mode === 'cards' || mode === 'quiz' || mode === 'mcq') && (
                         <Button variant={reversed ? 'secondary' : 'outline'} size="sm" onClick={() => setReversed(v => !v)} className="h-8 text-xs">
@@ -1666,6 +1844,18 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
             {mode === 'story' && (
               <StoryView token={auth.token} chapter={chapter} />
             )}
+            {mode === 'fsrs' && (
+              <FsrsReviewView token={auth.token} selChapterId={selId} ansLang={ansLang} onXp={awardXp} />
+            )}
+            {mode === 'cloze' && chapter && (
+              <ClozeView token={auth.token} chapter={chapter} onXp={awardXp} />
+            )}
+            {mode === 'write' && (
+              <WriteView token={auth.token} chapter={chapter} />
+            )}
+            {mode === 'listen' && (
+              <ListenView token={auth.token} chapter={chapter} onXp={awardXp} />
+            )}
           </div>
         </div>
 
@@ -1711,12 +1901,31 @@ function SentenceHint({ card }: { card: CardItem }) {
 
 /* ═══════════════ LIBRARY VIEW ═══════════════ */
 
+type SemanticResult = { cardId: string; word: string; article: string; english: string; hindi: string; type: string; chapterId: string };
+
 function LibraryView({ cards, knownIds, practiceIds, speakGerman, mark, isAdmin, token, onSentencesChanged }: {
   cards: CardItem[]; knownIds: Set<string>; practiceIds: Set<string>;
   speakGerman: (c: CardItem) => void; mark: (id: string, s: 'known' | 'practice') => void;
   isAdmin: boolean; token: string; onSentencesChanged: () => void;
 }) {
   const [expandedCard, setExpandedCard] = React.useState<string | null>(null);
+  const [semanticQuery, setSemanticQuery] = React.useState('');
+  const [semanticResults, setSemanticResults] = React.useState<SemanticResult[]>([]);
+  const [semanticLoading, setSemanticLoading] = React.useState(false);
+  const semanticTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    if (semanticTimer.current) clearTimeout(semanticTimer.current);
+    if (!semanticQuery.trim() || semanticQuery.trim().length < 2) { setSemanticResults([]); return; }
+    semanticTimer.current = setTimeout(async () => {
+      setSemanticLoading(true);
+      try {
+        const res = await fetch(`${API}/search?q=${encodeURIComponent(semanticQuery)}&k=8`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) setSemanticResults(await res.json());
+      } catch { /* ignore */ }
+      finally { setSemanticLoading(false); }
+    }, 500);
+  }, [semanticQuery]);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editDe, setEditDe] = React.useState('');
   const [editEn, setEditEn] = React.useState('');
@@ -1773,6 +1982,29 @@ function LibraryView({ cards, knownIds, practiceIds, speakGerman, mark, isAdmin,
 
   return (
     <section className="grid gap-2 pb-6">
+      {/* Semantic search bar */}
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input className="h-9 pl-9 pr-4 text-xs" placeholder="Semantic search across all cards (AI)…"
+          value={semanticQuery} onChange={e => setSemanticQuery(e.target.value)} />
+        {semanticLoading && <span className="absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin rounded-full border border-primary/40 border-t-primary" />}
+      </div>
+      {semanticResults.length > 0 && (
+        <div className="glass-panel-strong rounded-xl p-3">
+          <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Semantic Results</p>
+          <div className="grid gap-1">
+            {semanticResults.map(r => (
+              <div key={r.cardId} className="flex items-center justify-between rounded-lg border bg-white/60 px-3 py-2 dark:border-white/10 dark:bg-slate-950/55">
+                <div>
+                  <span className="text-sm font-bold">{r.article ? `${r.article} ` : ''}{r.word}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">{r.english}</span>
+                </div>
+                <Badge variant="muted" className="text-[9px]">{r.type}</Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {cards.map((c, i) => (
         <Card key={c.id} className={cn('glass-panel group rounded-xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover', i < 8 && `animate-fade-up stagger-${i + 1}`)}>
           <CardContent className="p-3">
@@ -1859,7 +2091,8 @@ function LibraryView({ cards, knownIds, practiceIds, speakGerman, mark, isAdmin,
 
 /* ═══════════════ ADMIN PANEL ═══════════════ */
 
-type AdminTab = 'chapters' | 'json' | 'pdf' | 'ai' | 'requests';
+type AdminTab = 'chapters' | 'json' | 'pdf' | 'ai' | 'requests' | 'generate' | 'csv';
+type DraftCard = { word: string; article: string; english: string; hindi: string; type: string; keep: boolean };
 
 function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: () => void }) {
   const [tab, setTab] = React.useState<AdminTab>('chapters');
@@ -1901,6 +2134,20 @@ function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: 
   const [aiLevel, setAiLevel] = React.useState('');
   const [aiTitle, setAiTitle] = React.useState('');
   const [aiTheme, setAiTheme] = React.useState('');
+
+  // AI card generator state
+  const [genTopic, setGenTopic] = React.useState('');
+  const [genChapterId, setGenChapterId] = React.useState('');
+  const [genCount, setGenCount] = React.useState(10);
+  const [genLoading, setGenLoading] = React.useState(false);
+  const [draftCards, setDraftCards] = React.useState<DraftCard[]>([]);
+  const [genSaving, setGenSaving] = React.useState(false);
+
+  // CSV import state
+  const [csvText, setCsvText] = React.useState('');
+  const [csvChapterId, setCsvChapterId] = React.useState('');
+  const [csvParsed, setCsvParsed] = React.useState<DraftCard[]>([]);
+  const [csvSaving, setCsvSaving] = React.useState(false);
 
   function loadChapters() {
     setLoading(true);
@@ -2056,9 +2303,35 @@ function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: 
   return (
     <section className="grid gap-4 animate-fade-up pb-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold">Admin Panel</h1>
-          <p className="text-xs text-muted-foreground">Manage chapters and upload vocabulary</p>
+        <div className="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-xl font-bold">Admin Panel</h1>
+            <p className="text-xs text-muted-foreground">Manage chapters and upload vocabulary</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="h-8 text-[11px] gap-1.5" onClick={async () => {
+              setMsg(''); setErr('');
+              try {
+                const res = await fetch(`${API}/search/index`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+                if (!res.ok) throw new Error('Reindex failed');
+                const d = await res.json() as { indexed: number };
+                setMsg(`pgvector: ${d.indexed} cards indexed`);
+              } catch (ex: unknown) { setErr(ex instanceof Error ? ex.message : 'Reindex failed'); }
+            }}>
+              <Search className="h-3 w-3" /> Reindex Search
+            </Button>
+            <Button variant="outline" size="sm" className="h-8 text-[11px] gap-1.5" onClick={async () => {
+              setMsg(''); setErr('');
+              try {
+                const res = await fetch(`${API}/tts/warmup`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+                if (!res.ok) throw new Error('Warmup failed');
+                const d = await res.json() as { total: number; generated: number };
+                setMsg(`TTS: ${d.generated}/${d.total} cards pre-generated`);
+              } catch (ex: unknown) { setErr(ex instanceof Error ? ex.message : 'Warmup failed'); }
+            }}>
+              <Volume2 className="h-3 w-3" /> Warm TTS
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -2066,12 +2339,14 @@ function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: 
       {err && <div className="animate-fade-up rounded-lg border border-destructive/20 bg-destructive/8 p-3 text-xs font-medium text-destructive">{err}</div>}
 
       <Tabs value={tab} onValueChange={v => setTab(v as AdminTab)}>
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="chapters">Chapters</TabsTrigger>
-          <TabsTrigger value="json">JSON</TabsTrigger>
-          <TabsTrigger value="pdf">PDF</TabsTrigger>
-          <TabsTrigger value="ai">AI Import</TabsTrigger>
-          <TabsTrigger value="requests">Requests</TabsTrigger>
+        <TabsList className="flex flex-wrap h-auto gap-0.5 p-1">
+          <TabsTrigger value="chapters" className="text-[11px]">Chapters</TabsTrigger>
+          <TabsTrigger value="json" className="text-[11px]">JSON</TabsTrigger>
+          <TabsTrigger value="pdf" className="text-[11px]">PDF</TabsTrigger>
+          <TabsTrigger value="csv" className="text-[11px]">CSV</TabsTrigger>
+          <TabsTrigger value="ai" className="text-[11px]">AI Import</TabsTrigger>
+          <TabsTrigger value="requests" className="text-[11px]">Requests</TabsTrigger>
+          <TabsTrigger value="generate" className="text-[11px] flex items-center gap-1"><Sparkles className="h-3 w-3" />Generate</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -2461,6 +2736,184 @@ function AdminPanel({ token, onChapterSaved }: { token: string; onChapterSaved: 
           </Card>
         </div>
       )}
+
+      {/* CSV import tab */}
+      {tab === 'csv' && (
+        <div className="grid gap-4">
+          <Card className="glass-panel rounded-xl">
+            <CardContent className="grid gap-4 p-5">
+              <div>
+                <h2 className="text-sm font-bold mb-0.5">CSV Import</h2>
+                <p className="text-[11px] text-muted-foreground">
+                  Paste CSV with header: <code className="rounded bg-muted px-1">word,article,english,hindi,type</code>
+                </p>
+              </div>
+              <textarea
+                value={csvText}
+                onChange={e => setCsvText(e.target.value)}
+                placeholder={"word,article,english,hindi,type\nReise,die,journey,यात्रा,NOUN\nreisen,,to travel,यात्रा करना,VERB"}
+                className="h-36 w-full rounded-md border bg-white/70 p-2 font-mono text-xs dark:border-white/10 dark:bg-slate-950/55"
+              />
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" className="h-8 text-xs gap-1" onClick={() => {
+                  const lines = csvText.trim().split('\n').slice(1).filter(Boolean);
+                  const parsed: DraftCard[] = [];
+                  for (const line of lines) {
+                    const parts = line.split(',').map(s => s.trim().replace(/^"|"$/g, ''));
+                    if (parts.length >= 3 && parts[0]) {
+                      parsed.push({ word: parts[0], article: parts[1] ?? '', english: parts[2] ?? '', hindi: parts[3] ?? '', type: parts[4] ?? 'NOUN', keep: true });
+                    }
+                  }
+                  setCsvParsed(parsed);
+                  if (parsed.length === 0) setErr('No valid rows found. Check format.');
+                  else setMsg(`${parsed.length} rows parsed. Review and save.`);
+                }}>
+                  <Eye className="h-3.5 w-3.5" /> Parse
+                </Button>
+                {csvParsed.length > 0 && (
+                  <>
+                    <select value={csvChapterId} onChange={e => setCsvChapterId(e.target.value)}
+                      className="h-8 rounded-md border bg-white px-2 text-xs dark:border-white/10 dark:bg-slate-950">
+                      <option value="">Select chapter…</option>
+                      {chapters.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                    </select>
+                    <Button size="sm" className="h-8 text-xs gap-1" disabled={csvSaving || !csvChapterId}
+                      onClick={async () => {
+                        const toSave = csvParsed.filter(c => c.keep);
+                        if (!csvChapterId || !toSave.length) return;
+                        setCsvSaving(true); setMsg(''); setErr('');
+                        try {
+                          const res = await fetch(`${API}/admin/chapters/${csvChapterId}/cards/batch`, {
+                            method: 'POST', headers: hdrs(token),
+                            body: JSON.stringify(toSave.map(c => ({ word: c.word, article: c.article, english: c.english, hindi: c.hindi, type: c.type }))),
+                          });
+                          if (!res.ok) throw new Error('Save failed');
+                          setMsg(`${toSave.length} cards saved!`);
+                          setCsvParsed([]); setCsvText('');
+                          onChapterSaved();
+                        } catch (ex: unknown) { setErr(ex instanceof Error ? ex.message : 'Error'); }
+                        finally { setCsvSaving(false); }
+                      }}>
+                      {csvSaving ? <span className="h-3 w-3 animate-spin rounded-full border border-white/40 border-t-white" /> : <Check className="h-3 w-3" />}
+                      Save {csvParsed.filter(c => c.keep).length} cards
+                    </Button>
+                  </>
+                )}
+              </div>
+              {csvParsed.length > 0 && (
+                <div className="grid gap-1.5 max-h-72 overflow-y-auto">
+                  {csvParsed.map((c, i) => (
+                    <div key={i} className={cn('flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs', c.keep ? 'border-border' : 'border-dashed opacity-50')}>
+                      <input type="checkbox" checked={c.keep} onChange={e => setCsvParsed(d => d.map((x, j) => j === i ? { ...x, keep: e.target.checked } : x))} className="h-3 w-3 accent-primary" />
+                      <span className="w-8 font-mono text-muted-foreground">{c.article}</span>
+                      <span className="w-32 font-semibold">{c.word}</span>
+                      <span className="text-muted-foreground">{c.english}</span>
+                      <span className="ml-auto text-muted-foreground">{c.hindi}</span>
+                      <Badge variant="muted" className="text-[9px]">{c.type}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Generate tab — AI card generation from topic */}
+      {tab === 'generate' && (
+        <div className="grid gap-4">
+          <Card className="glass-panel rounded-xl">
+            <CardContent className="grid gap-4 p-5">
+              <div>
+                <h2 className="text-sm font-bold mb-0.5">AI Vocabulary Generator</h2>
+                <p className="text-[11px] text-muted-foreground">Generate B1-level vocabulary cards from a topic using AI. Review and edit drafts before saving.</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+                <Input placeholder="Topic (e.g. Travel, Food, Weather)…" value={genTopic} onChange={e => setGenTopic(e.target.value)} className="h-9 text-sm" />
+                <select value={genCount} onChange={e => setGenCount(Number(e.target.value))}
+                  className="h-9 rounded-md border bg-white px-2 text-sm dark:border-white/10 dark:bg-slate-950">
+                  {[5, 8, 10, 15, 20].map(n => <option key={n} value={n}>{n} words</option>)}
+                </select>
+                <Button onClick={async () => {
+                  if (!genTopic.trim()) return;
+                  setGenLoading(true); setDraftCards([]); setMsg(''); setErr('');
+                  try {
+                    const res = await fetch(`${API}/ai/cards/generate`, {
+                      method: 'POST', headers: hdrs(token),
+                      body: JSON.stringify({ topic: genTopic, chapterId: genChapterId || 'none', count: genCount }),
+                    });
+                    if (!res.ok) throw new Error('Generation failed');
+                    const data = await res.json() as { cards: { word: string; article: string; english: string; hindi: string; type: string }[] };
+                    setDraftCards(data.cards.map(c => ({ ...c, keep: true })));
+                    if (data.cards.length === 0) setErr('No cards generated. Try a different topic.');
+                  } catch (ex: unknown) { setErr(ex instanceof Error ? ex.message : 'Error'); }
+                  finally { setGenLoading(false); }
+                }} disabled={genLoading || !genTopic.trim()} className="h-9 gap-1.5">
+                  {genLoading ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Sparkles className="h-3.5 w-3.5" />}
+                  Generate
+                </Button>
+              </div>
+              {draftCards.length > 0 && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-muted-foreground">{draftCards.filter(c => c.keep).length} / {draftCards.length} selected</p>
+                    <div className="flex gap-1.5">
+                      <select value={genChapterId} onChange={e => setGenChapterId(e.target.value)}
+                        className="h-7 rounded-md border bg-white px-2 text-xs dark:border-white/10 dark:bg-slate-950">
+                        <option value="">Select chapter to save to…</option>
+                        {chapters.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                      </select>
+                      <Button variant="default" size="sm" className="h-7 text-xs gap-1" disabled={genSaving || !genChapterId || !draftCards.some(c => c.keep)}
+                        onClick={async () => {
+                          const toSave = draftCards.filter(c => c.keep);
+                          if (!genChapterId || !toSave.length) return;
+                          setGenSaving(true); setMsg(''); setErr('');
+                          try {
+                            const res = await fetch(`${API}/admin/chapters/${genChapterId}/cards/batch`, {
+                              method: 'POST', headers: hdrs(token),
+                              body: JSON.stringify(toSave.map(c => ({ word: c.word, article: c.article, english: c.english, hindi: c.hindi, type: c.type }))),
+                            });
+                            if (!res.ok) throw new Error('Save failed');
+                            setMsg(`${toSave.length} cards saved to chapter!`);
+                            setDraftCards([]);
+                            onChapterSaved();
+                          } catch (ex: unknown) { setErr(ex instanceof Error ? ex.message : 'Save failed'); }
+                          finally { setGenSaving(false); }
+                        }}>
+                        {genSaving ? <span className="h-3 w-3 animate-spin rounded-full border border-white/40 border-t-white" /> : <Check className="h-3 w-3" />}
+                        Save selected
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="grid gap-2 max-h-96 overflow-y-auto pr-1">
+                    {draftCards.map((c, i) => (
+                      <div key={i} className={cn('rounded-lg border p-3 transition-all', c.keep ? 'border-border bg-white/60 dark:bg-slate-950/55' : 'border-dashed bg-muted/20 opacity-60')}>
+                        <div className="flex items-start gap-3">
+                          <input type="checkbox" checked={c.keep} onChange={e => setDraftCards(d => d.map((x, j) => j === i ? { ...x, keep: e.target.checked } : x))}
+                            className="mt-1 h-3.5 w-3.5 accent-primary" />
+                          <div className="flex-1 grid gap-1.5">
+                            <div className="grid grid-cols-[auto_1fr_1fr_1fr] gap-1.5 items-center">
+                              <Input className="h-6 w-14 text-xs font-medium px-1.5" value={c.article}
+                                onChange={e => setDraftCards(d => d.map((x, j) => j === i ? { ...x, article: e.target.value } : x))} placeholder="Art." />
+                              <Input className="h-6 text-sm font-bold px-2" value={c.word}
+                                onChange={e => setDraftCards(d => d.map((x, j) => j === i ? { ...x, word: e.target.value } : x))} />
+                              <Input className="h-6 text-xs px-2" value={c.english}
+                                onChange={e => setDraftCards(d => d.map((x, j) => j === i ? { ...x, english: e.target.value } : x))} placeholder="English" />
+                              <Input className="h-6 text-xs px-2" value={c.hindi}
+                                onChange={e => setDraftCards(d => d.map((x, j) => j === i ? { ...x, hindi: e.target.value } : x))} placeholder="Hindi" />
+                            </div>
+                            <Badge variant="muted" className="w-fit text-[9px]">{c.type}</Badge>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </section>
   );
 }
@@ -2819,6 +3272,683 @@ function ContributePanel({ token }: { token: string }) {
         </CardContent>
       </Card>
     </section>
+  );
+}
+
+/* ═══════════════ CLOZE VIEW ═══════════════ */
+
+type ClozeItem = {
+  cardId: string; sentenceDe: string; sentenceEn: string;
+  blankedDe: string; answer: string; distractors: string[];
+};
+
+function ClozeView({ token, chapter, onXp }: { token: string; chapter: Chapter | null; onXp: (n: number) => void }) {
+  const [items, setItems] = React.useState<ClozeItem[]>([]);
+  const [idx, setIdx] = React.useState(0);
+  const [selected, setSelected] = React.useState<string | null>(null);
+  const [input, setInput] = React.useState('');
+  const [mode, setMode] = React.useState<'mcq' | 'type'>('mcq');
+  const [loading, setLoading] = React.useState(false);
+  const [score, setScore] = React.useState({ correct: 0, total: 0 });
+  const [showAnswer, setShowAnswer] = React.useState(false);
+
+  React.useEffect(() => {
+    if (chapter) loadCloze();
+  }, [chapter?.id]);
+
+  async function loadCloze() {
+    if (!chapter) return;
+    setLoading(true);
+    setIdx(0);
+    setSelected(null);
+    setInput('');
+    setScore({ correct: 0, total: 0 });
+    setShowAnswer(false);
+    try {
+      const cards = chapter.cards.slice(0, 10);
+      const res = await fetch(`${API}/cloze/generate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cardIds: cards.map(c => c.id), count: cards.length }),
+      });
+      if (!res.ok) throw new Error();
+      const data: ClozeItem[] = await res.json();
+      setItems(data);
+    } catch { setItems([]); }
+    finally { setLoading(false); }
+  }
+
+  const cur = items[idx] ?? null;
+  const options = React.useMemo(() => {
+    if (!cur) return [];
+    const all = [cur.answer, ...cur.distractors];
+    for (let i = all.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [all[i], all[j]] = [all[j], all[i]]; }
+    return all;
+  }, [cur]);
+
+  function check(answer: string) {
+    if (selected || showAnswer) return;
+    const correct = answer.toLowerCase() === cur?.answer.toLowerCase();
+    setSelected(answer);
+    setScore(s => ({ correct: s.correct + (correct ? 1 : 0), total: s.total + 1 }));
+    if (correct) onXp(10);
+  }
+
+  function checkType() {
+    if (!cur || showAnswer) return;
+    const correct = input.trim().toLowerCase() === cur.answer.toLowerCase();
+    setShowAnswer(true);
+    setScore(s => ({ correct: s.correct + (correct ? 1 : 0), total: s.total + 1 }));
+    if (correct) onXp(10);
+  }
+
+  function next() {
+    setSelected(null);
+    setInput('');
+    setShowAnswer(false);
+    setIdx(i => i + 1);
+  }
+
+  if (!chapter) return <div className="glass-panel rounded-xl p-8 text-center text-muted-foreground"><p>Select a chapter first.</p></div>;
+  if (loading) return <div className="grid place-items-center py-16"><div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" /></div>;
+  if (items.length === 0) return (
+    <div className="mx-auto flex max-w-md flex-col items-center gap-4 py-12 text-center">
+      <p className="text-3xl">🤔</p><h2 className="font-bold">No cloze exercises generated</h2>
+      <p className="text-sm text-muted-foreground">AI needs an API key to generate exercises. Browser-based exercises are in Grammar mode.</p>
+      <Button onClick={loadCloze} variant="outline"><RotateCcw className="h-4 w-4" /> Try again</Button>
+    </div>
+  );
+  if (idx >= items.length) return (
+    <div className="mx-auto flex max-w-md flex-col items-center gap-5 py-12 text-center animate-scale-in">
+      <p className="text-5xl">🎯</p>
+      <h2 className="text-xl font-bold">Cloze complete!</h2>
+      <p className="text-sm text-muted-foreground">{score.correct}/{score.total} correct ({score.total > 0 ? Math.round((score.correct / score.total) * 100) : 0}%)</p>
+      <Button onClick={loadCloze}><RotateCcw className="h-4 w-4" /> New Session</Button>
+    </div>
+  );
+
+  return (
+    <div className="mx-auto flex max-w-2xl flex-col gap-4 animate-fade-up">
+      <div className="flex items-center justify-between">
+        <div className="flex gap-0.5 rounded-lg border bg-white/60 p-0.5 dark:border-white/10 dark:bg-slate-950/55">
+          <Button variant={mode === 'mcq' ? 'secondary' : 'ghost'} size="sm" onClick={() => setMode('mcq')} className="h-7 text-xs">Multiple Choice</Button>
+          <Button variant={mode === 'type' ? 'secondary' : 'ghost'} size="sm" onClick={() => setMode('type')} className="h-7 text-xs">Type Answer</Button>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="text-[10px]">{score.correct}/{score.total}</Badge>
+          <span className="text-[10px] text-muted-foreground">{idx + 1}/{items.length}</span>
+        </div>
+      </div>
+
+      <Card className="glass-panel rounded-xl">
+        <CardContent className="grid gap-5 p-6">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Fill in the blank</p>
+          <p className="text-xl font-semibold leading-relaxed text-center">{cur?.blankedDe}</p>
+          <p className="text-center text-sm text-muted-foreground">{cur?.sentenceEn}</p>
+
+          {mode === 'mcq' ? (
+            <div className="grid grid-cols-2 gap-2">
+              {options.map(opt => {
+                const isCorrect = opt.toLowerCase() === cur?.answer.toLowerCase();
+                const isSelected = opt === selected;
+                let cls = 'h-12 rounded-xl border-2 font-medium transition-all text-sm';
+                if (selected) {
+                  if (isCorrect) cls += ' border-accent bg-accent/10 text-accent';
+                  else if (isSelected) cls += ' border-destructive bg-destructive/8 text-destructive animate-shake';
+                  else cls += ' border-border text-muted-foreground opacity-60';
+                } else {
+                  cls += ' border-border hover:border-primary hover:bg-primary/5 cursor-pointer';
+                }
+                return <button key={opt} className={cls} onClick={() => check(opt)} disabled={!!selected}>{opt}</button>;
+              })}
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              <div className="grid grid-cols-[1fr_auto] gap-2">
+                <Input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && checkType()}
+                  placeholder="Type the missing word…" disabled={showAnswer}
+                  className={cn(showAnswer && (input.trim().toLowerCase() === cur?.answer.toLowerCase() ? 'border-accent' : 'border-destructive'))} />
+                <Button onClick={checkType} disabled={showAnswer || !input.trim()}>Check</Button>
+              </div>
+              {showAnswer && (
+                <p className={cn('text-sm font-medium', input.trim().toLowerCase() === cur?.answer.toLowerCase() ? 'text-accent' : 'text-destructive')}>
+                  {input.trim().toLowerCase() === cur?.answer.toLowerCase() ? '✓ Correct!' : `✗ Answer: ${cur?.answer}`}
+                </p>
+              )}
+            </div>
+          )}
+
+          {(selected || showAnswer) && cur?.sentenceDe && (
+            <div className="rounded-lg bg-muted/30 p-3 text-sm text-muted-foreground">
+              <strong className="text-foreground">{cur.sentenceDe}</strong>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {(selected || showAnswer) && (
+        <Button onClick={next} className="w-full gap-2">
+          {idx + 1 < items.length ? <><ArrowRight className="h-4 w-4" /> Next</> : <><Trophy className="h-4 w-4" /> Finish</>}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════ WRITE VIEW ═══════════════ */
+
+type WritingFeedback = { correctedText: string; corrections: Array<{ original: string; corrected: string; explanation: string }>; cefrLevel: string; overallFeedback: string };
+
+const WRITING_PROMPTS = [
+  { de: 'Schreiben Sie eine E-Mail an einen Freund über Ihren letzten Urlaub. (80–100 Wörter)', en: 'Write an email to a friend about your last vacation. (80–100 words)' },
+  { de: 'Beschreiben Sie Ihre Stadt oder Ihren Heimatort. (80–100 Wörter)', en: 'Describe your city or hometown. (80–100 words)' },
+  { de: 'Schreiben Sie über Ihre tägliche Routine. (80–100 Wörter)', en: 'Write about your daily routine. (80–100 words)' },
+  { de: 'Schreiben Sie eine Nachricht an Ihren Chef/Ihre Chefin, dass Sie krank sind. (60–80 Wörter)', en: 'Write a message to your boss that you are sick. (60–80 words)' },
+  { de: 'Beschreiben Sie Ihre Familie und was Sie gemeinsam unternehmen. (80–100 Wörter)', en: 'Describe your family and what you do together. (80–100 words)' },
+];
+
+function WriteView({ token, chapter }: { token: string; chapter: Chapter | null }) {
+  const [promptIdx, setPromptIdx] = React.useState(0);
+  const [text, setText] = React.useState('');
+  const [feedback, setFeedback] = React.useState<WritingFeedback | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  const prompt = WRITING_PROMPTS[promptIdx];
+
+  async function submit() {
+    if (!text.trim() || text.trim().split(/\s+/).length < 20) {
+      setError('Please write at least 20 words before submitting.'); return;
+    }
+    setLoading(true); setError(''); setFeedback(null);
+    try {
+      const res = await fetch(`${API}/ai/writing/feedback`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: prompt.de, userText: text }),
+      });
+      if (!res.ok) throw new Error('Request failed');
+      const data: WritingFeedback = await res.json();
+      setFeedback(data);
+    } catch { setError('Could not get feedback. Please try again.'); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <div className="mx-auto flex max-w-2xl flex-col gap-4 animate-fade-up">
+      <div className="rounded-xl border bg-gradient-to-r from-primary/8 to-accent/8 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">B1 Writing Task</p>
+            <p className="mt-1 text-sm font-semibold">{prompt.de}</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">{prompt.en}</p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => { setPromptIdx(i => (i + 1) % WRITING_PROMPTS.length); setFeedback(null); setText(''); }} className="shrink-0 text-xs">
+            <RotateCcw className="h-3 w-3" /> New prompt
+          </Button>
+        </div>
+      </div>
+
+      <Card className="glass-panel rounded-xl">
+        <CardContent className="grid gap-3 p-4">
+          <div className="flex justify-between text-[10px] text-muted-foreground">
+            <span>Your answer (German)</span>
+            <span>{text.trim().split(/\s+/).filter(Boolean).length} words</span>
+          </div>
+          <textarea
+            value={text}
+            onChange={e => { setText(e.target.value); setError(''); }}
+            placeholder="Schreiben Sie hier auf Deutsch…"
+            rows={8}
+            className="w-full resize-none rounded-lg border bg-white/60 p-3 text-sm outline-none focus:ring-2 focus:ring-primary/30 dark:border-white/10 dark:bg-slate-950/40"
+          />
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <Button onClick={submit} disabled={loading || !text.trim()} className="gap-2">
+            {loading ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />Analysing…</> : <><Sparkles className="h-4 w-4" />Get AI Feedback</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {feedback && (
+        <div className="grid gap-3 animate-fade-up">
+          <Card className="glass-panel rounded-xl">
+            <CardContent className="grid gap-3 p-5">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">{feedback.cefrLevel}</Badge>
+                <h3 className="font-bold text-sm">Overall Feedback</h3>
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed">{feedback.overallFeedback}</p>
+            </CardContent>
+          </Card>
+          {feedback.corrections.length > 0 && (
+            <Card className="glass-panel rounded-xl">
+              <CardContent className="grid gap-3 p-5">
+                <h3 className="font-bold text-sm">Corrections ({feedback.corrections.length})</h3>
+                {feedback.corrections.map((c, i) => (
+                  <div key={i} className="rounded-lg border border-destructive/15 bg-destructive/5 p-3 grid gap-1">
+                    <div className="flex items-center gap-2 flex-wrap text-sm">
+                      <span className="line-through text-destructive/70">{c.original}</span>
+                      <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      <span className="font-semibold text-accent">{c.corrected}</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">{c.explanation}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+          {feedback.correctedText && (
+            <Card className="glass-panel rounded-xl">
+              <CardContent className="p-5 grid gap-2">
+                <h3 className="font-bold text-sm">Corrected Version</h3>
+                <p className="text-sm leading-relaxed text-muted-foreground">{feedback.correctedText}</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════ TTS HELPER ═══════════════ */
+
+let _ttsAudio: HTMLAudioElement | null = null;
+async function speakTts(cardId: string, token: string, fallbackCard?: { article?: string; word: string }) {
+  try {
+    const res = await fetch(`${API}/tts/${cardId}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error('TTS unavailable');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    if (_ttsAudio) { _ttsAudio.pause(); URL.revokeObjectURL(_ttsAudio.src); }
+    _ttsAudio = new Audio(url);
+    _ttsAudio.play().catch(() => {});
+    _ttsAudio.onended = () => { if (_ttsAudio) URL.revokeObjectURL(_ttsAudio.src); };
+  } catch {
+    if (fallbackCard) {
+      const card = { ...fallbackCard, id: cardId, type: '', english: '', hindi: '' } as CardItem;
+      speakGerman(card);
+    }
+  }
+}
+
+/* ═══════════════ FSRS REVIEW VIEW ═══════════════ */
+
+const RATING_LABELS: Record<number, { label: string; color: string; bg: string }> = {
+  1: { label: 'Again', color: 'text-destructive', bg: 'bg-destructive/8 hover:bg-destructive/15 border-destructive/30' },
+  2: { label: 'Hard',  color: 'text-orange-500',  bg: 'bg-orange-50 hover:bg-orange-100 border-orange-200 dark:bg-orange-950/30 dark:hover:bg-orange-950/50 dark:border-orange-800/40' },
+  3: { label: 'Good',  color: 'text-primary',      bg: 'bg-primary/8 hover:bg-primary/15 border-primary/30' },
+  4: { label: 'Easy',  color: 'text-accent',       bg: 'bg-accent/8 hover:bg-accent/15 border-accent/30' },
+};
+
+function fmtInterval(days: number): string {
+  if (days < 1) return '<1d';
+  if (days === 1) return '1d';
+  if (days < 30) return `${days}d`;
+  if (days < 365) return `${Math.round(days / 30)}mo`;
+  return `${(days / 365).toFixed(1)}yr`;
+}
+
+/* ═══════════════ LISTEN VIEW ═══════════════ */
+function ListenView({ token, chapter, onXp }: { token: string; chapter: Chapter | null; onXp: (pts: number) => void }) {
+  const cards = React.useMemo(() => {
+    if (!chapter) return [];
+    return [...chapter.cards].sort(() => Math.random() - 0.5);
+  }, [chapter?.id]);
+  const [idx, setIdx] = React.useState(0);
+  const [input, setInput] = React.useState('');
+  const [result, setResult] = React.useState<'idle' | 'correct' | 'wrong'>('idle');
+  const [score, setScore] = React.useState({ correct: 0, total: 0 });
+  const [revealed, setRevealed] = React.useState(false);
+  const [ttsLoading, setTtsLoading] = React.useState(false);
+
+  const cur = cards[idx] ?? null;
+
+  async function playAudio() {
+    if (!cur) return;
+    setTtsLoading(true);
+    await speakTts(cur.id, token, { article: cur.article, word: cur.word });
+    setTtsLoading(false);
+  }
+
+  React.useEffect(() => {
+    if (cur) playAudio();
+  }, [idx]);
+
+  function check() {
+    if (!cur || result !== 'idle') return;
+    const correct = input.trim().toLowerCase() === cur.word.toLowerCase();
+    setResult(correct ? 'correct' : 'wrong');
+    setScore(s => ({ correct: s.correct + (correct ? 1 : 0), total: s.total + 1 }));
+    if (correct) onXp(15);
+  }
+
+  function next() {
+    setInput(''); setResult('idle'); setRevealed(false);
+    setIdx(i => i + 1);
+  }
+
+  if (!chapter) return <div className="glass-panel rounded-xl p-8 text-center text-muted-foreground">Select a chapter first.</div>;
+  if (cards.length === 0) return <div className="glass-panel rounded-xl p-8 text-center text-muted-foreground">No cards in this chapter.</div>;
+  if (idx >= cards.length) return (
+    <div className="mx-auto flex max-w-md flex-col items-center gap-5 py-12 text-center animate-scale-in">
+      <p className="text-5xl">🎧</p>
+      <h2 className="text-xl font-bold">Listening complete!</h2>
+      <p className="text-sm text-muted-foreground">{score.correct}/{score.total} correct ({score.total > 0 ? Math.round((score.correct / score.total) * 100) : 0}%)</p>
+      <Button onClick={() => { setIdx(0); setScore({ correct: 0, total: 0 }); }}><RotateCcw className="h-4 w-4" /> Try again</Button>
+    </div>
+  );
+
+  return (
+    <div className="mx-auto flex max-w-lg flex-col gap-5 animate-fade-up">
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+        <span>Card {idx + 1} / {cards.length}</span>
+        <Badge variant="secondary" className="text-[9px]">{score.correct}/{score.total}</Badge>
+      </div>
+      <Card className="glass-panel rounded-xl">
+        <CardContent className="flex flex-col items-center gap-6 p-8">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Listen and type the German word</p>
+          <button onClick={playAudio} disabled={ttsLoading}
+            className="grid h-24 w-24 place-items-center rounded-full border-4 border-primary/20 bg-primary/8 text-primary transition-all hover:scale-105 active:scale-95 disabled:opacity-50">
+            {ttsLoading
+              ? <span className="h-6 w-6 animate-spin rounded-full border-2 border-primary/40 border-t-primary" />
+              : <Headphones className="h-10 w-10" />}
+          </button>
+          <p className="text-[11px] text-muted-foreground">Tap to play audio</p>
+          <div className="w-full grid gap-3">
+            <div className="flex gap-2">
+              <Input value={input} onChange={e => setInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && (result === 'idle' ? check() : next())}
+                placeholder="Type the German word…" disabled={result !== 'idle'}
+                className={cn('text-center font-semibold',
+                  result === 'correct' && 'border-accent text-accent',
+                  result === 'wrong' && 'border-destructive')} />
+              {result === 'idle' && <Button onClick={check} disabled={!input.trim()}>Check</Button>}
+            </div>
+            {result !== 'idle' && (
+              <div className="animate-fade-up">
+                {result === 'correct'
+                  ? <p className="text-center text-sm font-bold text-accent">✓ Correct! "{cur.article ? cur.article + ' ' : ''}{cur.word}"</p>
+                  : <div className="text-center">
+                    <p className="text-sm font-bold text-destructive">✗ Wrong — Answer: <span className="text-foreground">{cur.article ? cur.article + ' ' : ''}{cur.word}</span></p>
+                    {!revealed && <button onClick={() => setRevealed(true)} className="mt-1 text-[11px] text-primary hover:underline">Show hint</button>}
+                    {revealed && <p className="mt-1 text-xs text-muted-foreground">{cur.english} &middot; {cur.hindi}</p>}
+                  </div>}
+                <div className="flex justify-center mt-3">
+                  <Button variant="outline" size="sm" onClick={next} className="gap-1.5"><ArrowRight className="h-3.5 w-3.5" /> Next</Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+/* ═══════════════ FSRS REVIEW VIEW ═══════════════ */
+function FsrsReviewView({
+  token, selChapterId, ansLang, onXp
+}: { token: string; selChapterId: string; ansLang: AnswerLanguage; onXp: (pts: number) => void }) {
+  const [queue, setQueue] = React.useState<FsrsQueueItem[]>([]);
+  const [idx, setIdx] = React.useState(0);
+  const [flipped, setFlipped] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [sessionDone, setSessionDone] = React.useState(false);
+  const [sessionStats, setSessionStats] = React.useState({ total: 0, again: 0, hard: 0, good: 0, easy: 0 });
+  const [ttsLoading, setTtsLoading] = React.useState(false);
+  const [audioMode, setAudioMode] = React.useState(() => localStorage.getItem('fsrs-audio-mode') === '1');
+  const [grammarTip, setGrammarTip] = React.useState<string | null>(null);
+  const [grammarLoading, setGrammarLoading] = React.useState(false);
+
+  const rateRef = React.useRef(rate);
+  const flippedRef = React.useRef(flipped);
+  React.useEffect(() => { rateRef.current = rate; });
+  React.useEffect(() => { flippedRef.current = flipped; }, [flipped]);
+
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.target as HTMLElement).closest('input,textarea,select,button')) return;
+      if (e.key === ' ') { e.preventDefault(); if (!flippedRef.current) setFlipped(true); return; }
+      if (!flippedRef.current) return;
+      const r = parseInt(e.key);
+      if (r >= 1 && r <= 4) rateRef.current(r as FsrsRating);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Auto-play TTS when card is revealed in audio mode
+  React.useEffect(() => {
+    if (audioMode && flipped && cur) {
+      speakTts(cur.cardId, token, { article: cur.article, word: cur.word });
+    }
+  }, [flipped, audioMode]);
+
+  React.useEffect(() => {
+    localStorage.setItem('fsrs-audio-mode', audioMode ? '1' : '0');
+  }, [audioMode]);
+
+  React.useEffect(() => {
+    loadQueue();
+  }, [selChapterId]);
+
+  async function loadQueue() {
+    setLoading(true);
+    setIdx(0);
+    setFlipped(false);
+    setSessionDone(false);
+    setSessionStats({ total: 0, again: 0, hard: 0, good: 0, easy: 0 });
+    try {
+      const url = selChapterId
+        ? `${API}/review/queue?chapterId=${encodeURIComponent(selChapterId)}&limit=20`
+        : `${API}/review/queue?limit=20`;
+      const data = await fetchJson<FsrsQueueItem[]>(url, token);
+      setQueue(data);
+    } catch { setQueue([]); }
+    finally { setLoading(false); }
+  }
+
+  const cur = queue[idx] ?? null;
+
+  async function rate(rating: FsrsRating) {
+    if (!cur || submitting) return;
+    setSubmitting(true);
+    try {
+      await fetch(`${API}/review/${cur.cardId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating }),
+      });
+      const ratingKey = (['again', 'hard', 'good', 'easy'] as const)[rating - 1];
+      setSessionStats(s => ({ ...s, total: s.total + 1, [ratingKey]: s[ratingKey] + 1 }));
+      if (rating >= 3) onXp(rating === 4 ? 15 : 10);
+      const next = idx + 1;
+      if (next >= queue.length) setSessionDone(true);
+      else { setIdx(next); setFlipped(false); setGrammarTip(null); }
+    } catch { /* fail silently */ }
+    finally { setSubmitting(false); }
+  }
+
+  async function handleTts() {
+    if (!cur) return;
+    setTtsLoading(true);
+    await speakTts(cur.cardId, token, { article: cur.article, word: cur.word });
+    setTtsLoading(false);
+  }
+
+  async function fetchGrammarTip() {
+    if (!cur || grammarTip || grammarLoading) return;
+    setGrammarLoading(true);
+    try {
+      const res = await fetch(`${API}/ai/hint`, {
+        method: 'POST', headers: hdrs(token),
+        body: JSON.stringify({ cardId: cur.cardId, word: cur.word, article: cur.article ?? '', english: cur.english, hindi: cur.hindi ?? '', wrongAnswer: '' }),
+      });
+      if (res.ok) {
+        const d = await res.json() as { hint?: string; available?: boolean };
+        if (d.available && d.hint) setGrammarTip(d.hint);
+        else setGrammarTip('AI tip unavailable.');
+      }
+    } catch { setGrammarTip('Could not load tip.'); }
+    finally { setGrammarLoading(false); }
+  }
+
+  if (loading) return (
+    <div className="grid place-items-center py-16">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+    </div>
+  );
+
+  if (sessionDone || queue.length === 0) return (
+    <div className="mx-auto flex max-w-md flex-col items-center gap-5 py-12 text-center animate-scale-in">
+      <div className="text-5xl">{queue.length === 0 ? '🎉' : '✅'}</div>
+      <h2 className="text-xl font-bold">{queue.length === 0 ? 'All caught up!' : 'Session complete!'}</h2>
+      <p className="text-sm text-muted-foreground">
+        {queue.length === 0
+          ? 'No cards due for review. Come back tomorrow!'
+          : `You reviewed ${sessionStats.total} card${sessionStats.total !== 1 ? 's' : ''}.`}
+      </p>
+      {sessionStats.total > 0 && (
+        <div className="grid grid-cols-4 gap-2 w-full">
+          {[1, 2, 3, 4].map(r => {
+            const key = (['again', 'hard', 'good', 'easy'] as const)[r - 1];
+            const count = sessionStats[key];
+            const { label, color, bg } = RATING_LABELS[r];
+            return (
+              <div key={r} className={cn('rounded-xl border p-3 text-center', bg)}>
+                <strong className={cn('block text-lg font-bold', color)}>{count}</strong>
+                <span className="text-[10px] text-muted-foreground">{label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <Button onClick={loadQueue} className="gap-2"><RotateCcw className="h-4 w-4" /> Load More</Button>
+    </div>
+  );
+
+  const previews = cur?.previewIntervals ?? [1, 3, 7, 14];
+
+  return (
+    <div className="mx-auto flex max-w-2xl flex-col gap-4 animate-fade-up">
+      {/* Header row: progress + audio mode toggle */}
+      <div>
+        <div className="mb-1 flex justify-between text-[10px] text-muted-foreground">
+          <span>Card {idx + 1} / {queue.length}</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setAudioMode(v => !v)}
+              title={audioMode ? 'Audio mode on (auto-plays German)' : 'Audio mode off'}
+              className={cn('flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-colors',
+                audioMode ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:text-foreground')}
+            >
+              <Volume2 className="h-3 w-3" /> {audioMode ? 'Audio On' : 'Audio Off'}
+            </button>
+            {cur?.isNew ? <Badge variant="secondary" className="text-[9px]">New</Badge> : <Badge variant="muted" className="text-[9px]">Review</Badge>}
+          </div>
+        </div>
+        <Progress value={((idx + 1) / queue.length) * 100} className="h-1.5" />
+      </div>
+
+      {/* Flip card */}
+      <div className="perspective-1200 h-[clamp(260px,calc(100dvh-360px),360px)] w-full cursor-pointer select-none"
+        onClick={() => !flipped && setFlipped(true)}
+        onTouchStart={e => {
+          const t = e.touches[0]; (e.currentTarget as HTMLElement).dataset.touchX = String(t.clientX); (e.currentTarget as HTMLElement).dataset.touchY = String(t.clientY);
+        }}
+        onTouchEnd={e => {
+          const el = e.currentTarget as HTMLElement;
+          const dx = e.changedTouches[0].clientX - Number(el.dataset.touchX ?? 0);
+          const dy = e.changedTouches[0].clientY - Number(el.dataset.touchY ?? 0);
+          if (Math.abs(dx) < 20 && dy < -50) { if (!flipped) setFlipped(true); return; } // swipe up → flip
+          if (!flipped) return;
+          if (Math.abs(dy) > Math.abs(dx)) return; // vertical swipe — ignore
+          if (dx > 60) rateRef.current(4);  // swipe right → Easy
+          else if (dx < -60) rateRef.current(1); // swipe left → Again
+        }}>
+        <div className={cn('preserve-3d relative h-full w-full flip-transition', flipped && 'rotate-y-180')}>
+          {/* Front */}
+          <div className="backface-hidden absolute inset-0 flex flex-col items-center justify-center rounded-xl border bg-white/90 p-6 shadow-panel backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/75">
+            <Button variant="outline" size="icon" className="absolute right-3 top-3 h-8 w-8 bg-white/80 shadow-sm dark:border-white/10 dark:bg-slate-900/80"
+              onClick={e => { e.stopPropagation(); handleTts(); }} disabled={ttsLoading}>
+              {ttsLoading ? <span className="h-3 w-3 animate-spin rounded-full border border-primary/40 border-t-primary" /> : <Volume2 className="h-4 w-4 text-primary" />}
+            </Button>
+            <Badge variant="muted" className="mb-3 text-[9px] uppercase">{cur?.type}</Badge>
+            {cur?.article && <p className="text-sm font-semibold text-destructive">{cur.article}</p>}
+            <h2 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">{cur?.word}</h2>
+            {cur && !cur.isNew && cur.reps !== undefined && (
+              <p className="mt-4 text-[10px] text-muted-foreground">
+                Rep #{cur.reps + 1} &nbsp;·&nbsp; Stability: {cur.stability?.toFixed(1)}d &nbsp;·&nbsp; Difficulty: {cur.difficulty?.toFixed(1)}
+              </p>
+            )}
+            <p className="mt-4 flex items-center gap-1.5 text-[11px] text-muted-foreground"><Sparkles className="h-3 w-3" />Tap to reveal</p>
+          </div>
+          {/* Back */}
+          <div className="backface-hidden rotate-y-180 absolute inset-0 flex flex-col items-center justify-center rounded-xl border bg-gradient-to-br from-slate-900 to-slate-800 p-6 shadow-panel text-white overflow-auto">
+            <Badge variant="glass" className="mb-4 text-[9px] uppercase">{ansLang}</Badge>
+            <h2 className="text-2xl font-bold sm:text-3xl">{cur?.[ansLang]}</h2>
+            <p className="mt-2 text-sm text-white/60">{ansLang === 'hindi' ? cur?.english : cur?.hindi}</p>
+            <div className="mt-3 flex gap-2">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-white/70 hover:text-white"
+                onClick={e => { e.stopPropagation(); handleTts(); }}>
+                <Volume2 className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-white/70 hover:text-white text-[11px]"
+                onClick={e => { e.stopPropagation(); fetchGrammarTip(); }} disabled={grammarLoading}>
+                {grammarLoading ? <span className="h-3 w-3 animate-spin rounded-full border border-white/40 border-t-white" /> : <Sparkles className="h-3.5 w-3.5" />}
+                Memory tip
+              </Button>
+            </div>
+            {grammarTip && (
+              <p className="mt-3 max-w-[280px] rounded-lg bg-white/10 px-3 py-2 text-center text-[11px] leading-relaxed text-white/80">
+                {grammarTip}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Rating buttons — shown only after flip */}
+      {flipped ? (
+        <div className="grid grid-cols-4 gap-2">
+          {([1, 2, 3, 4] as FsrsRating[]).map(r => {
+            const { label, color, bg } = RATING_LABELS[r];
+            return (
+              <button key={r} disabled={submitting} onClick={() => rate(r)}
+                aria-label={`Rate ${label} — next review in ${fmtInterval(previews[r - 1] ?? r)}`}
+                className={cn(
+                  'flex flex-col items-center gap-1 rounded-xl border p-3 transition-all active:scale-95 disabled:opacity-50',
+                  bg
+                )}>
+                <span className={cn('text-sm font-bold', color)}>{label}</span>
+                <span className="text-[10px] text-muted-foreground">{fmtInterval(previews[r - 1] ?? r)}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex justify-center">
+          <Button onClick={() => setFlipped(true)} size="lg" className="gap-2 px-8">
+            <Eye className="h-4 w-4" /> Show Answer
+          </Button>
+        </div>
+      )}
+      <p className="hidden text-center text-[10px] text-muted-foreground/60 sm:block">
+        Flip card to reveal · Then rate: 1 = Again, 2 = Hard, 3 = Good, 4 = Easy
+      </p>
+      {flipped && (
+        <p className="text-center text-[10px] text-muted-foreground/40 sm:hidden">
+          ← Swipe left = Again &nbsp;·&nbsp; Swipe right = Easy →
+        </p>
+      )}
+      {!flipped && (
+        <p className="text-center text-[10px] text-muted-foreground/40 sm:hidden">
+          Tap card or swipe up to reveal
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -3222,7 +4352,33 @@ function StoryView({ token, chapter }: { token: string; chapter: Chapter | null 
   );
 }
 
+/* ═══════════════ ERROR BOUNDARY ═══════════════ */
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(e: Error) { return { error: e }; }
+  override componentDidCatch(e: Error, info: React.ErrorInfo) {
+    console.error('ErrorBoundary caught:', e, info);
+  }
+  override render() {
+    if (this.state.error) return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 p-8 text-center">
+        <p className="text-4xl">💥</p>
+        <h2 className="text-xl font-bold text-destructive">Something went wrong</h2>
+        <p className="max-w-md text-sm text-muted-foreground">{this.state.error.message}</p>
+        <button onClick={() => { this.setState({ error: null }); window.location.reload(); }}
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90">
+          Reload app
+        </button>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
 /* ═══════════════ MOUNT ═══════════════ */
 const root = document.getElementById('root')!;
 window.__germanFlashcardsRoot ??= createRoot(root);
-window.__germanFlashcardsRoot.render(<React.StrictMode><App /></React.StrictMode>);
+window.__germanFlashcardsRoot.render(<React.StrictMode><ErrorBoundary><App /></ErrorBoundary></React.StrictMode>);

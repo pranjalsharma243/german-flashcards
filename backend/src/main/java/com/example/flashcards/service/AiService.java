@@ -7,6 +7,15 @@ import com.example.flashcards.model.ChatMessage;
 import com.example.flashcards.model.ChatResponse;
 import com.example.flashcards.model.StoryRequest;
 import com.example.flashcards.model.StoryResponse;
+import com.example.flashcards.model.WritingFeedbackResponse;
+import com.example.flashcards.model.GeneratedCard;
+import com.example.flashcards.model.CardGenerateResponse;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import com.example.flashcards.entity.CardAiContentEntity;
+import com.example.flashcards.repository.CardAiContentRepository;
+import com.example.flashcards.repository.CardRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -38,6 +47,8 @@ public class AiService {
     private final ChatClient chatClient;
     private final ChatModel chatModel;
     private final ObjectMapper objectMapper;
+    private final CardAiContentRepository aiContentRepo;
+    private final CardRepository cardRepo;
     private final boolean enabled;
 
     private static final String TUTOR_SYSTEM_PROMPT = """
@@ -61,10 +72,14 @@ public class AiService {
             ChatClient.Builder chatClientBuilder,
             ChatModel chatModel,
             ObjectMapper objectMapper,
+            CardAiContentRepository aiContentRepo,
+            CardRepository cardRepo,
             @Value("${spring.ai.openai.api-key:disabled}") String apiKey
     ) {
         this.chatModel = chatModel;
         this.objectMapper = objectMapper;
+        this.aiContentRepo = aiContentRepo;
+        this.cardRepo = cardRepo;
         this.enabled = !apiKey.isBlank() && !apiKey.equals("disabled");
         this.chatClient = chatClientBuilder
                 .defaultSystem("You are a concise German language tutor helping students memorize vocabulary.")
@@ -115,10 +130,14 @@ public class AiService {
         return springMessages;
     }
 
-    @Cacheable(value = "ai-hints", key = "#cardId + ':' + #wrongAnswer")
     public AiHintResponse generateHint(String cardId, String word, String article,
                                        String english, String hindi, String wrongAnswer) {
         if (!enabled) return AiHintResponse.unavailable();
+        // Check DB cache first (mnemonic is per-card, not per-wrong-answer)
+        var cached = aiContentRepo.findById(cardId);
+        if (cached.isPresent() && cached.get().getMnemonic() != null) {
+            return AiHintResponse.of(cached.get().getMnemonic());
+        }
         try {
             String articlePart = (article != null && !article.isBlank()) ? article + " " : "";
             String hindiPart = (hindi != null && !hindi.isBlank()) ? ", Hindi: " + hindi : "";
@@ -138,16 +157,32 @@ public class AiService {
                             .param("wrong", wrongAnswer))
                     .call()
                     .content();
-            return AiHintResponse.of(hint != null ? hint.trim() : "");
+            if (hint == null) return AiHintResponse.unavailable();
+            String trimmed = hint.trim();
+            // Persist to DB
+            var content = cached.map(c -> c).orElseGet(() -> {
+                var c = new CardAiContentEntity();
+                c.setCardId(cardId);
+                cardRepo.findById(cardId).ifPresent(c::setCard);
+                return c;
+            });
+            content.setMnemonic(trimmed);
+            content.setUpdatedAt(java.time.Instant.now());
+            aiContentRepo.save(content);
+            return AiHintResponse.of(trimmed);
         } catch (Exception e) {
             log.warn("AI hint generation failed for card {}: {}", cardId, e.getMessage());
             return AiHintResponse.unavailable();
         }
     }
 
-    @Cacheable(value = "ai-sentences", key = "#cardId")
     public AiSentenceResponse generateSentence(String cardId, String word, String article, String english) {
         if (!enabled) return AiSentenceResponse.unavailable();
+        // Check DB cache first
+        var cached = aiContentRepo.findById(cardId);
+        if (cached.isPresent() && cached.get().getAiExampleDe() != null) {
+            return AiSentenceResponse.of(cached.get().getAiExampleDe(), cached.get().getAiExampleEn());
+        }
         try {
             String articlePart = (article != null && !article.isBlank()) ? article + " " : "";
             String raw = chatClient.prompt()
@@ -162,7 +197,20 @@ public class AiService {
             if (raw == null) return AiSentenceResponse.unavailable();
             String json = extractJson(raw.trim());
             JsonNode node = objectMapper.readTree(json);
-            return AiSentenceResponse.of(node.get("de").asText(), node.get("en").asText());
+            String de = node.get("de").asText();
+            String en = node.get("en").asText();
+            // Persist to DB
+            var content = cached.map(c -> c).orElseGet(() -> {
+                var c = new CardAiContentEntity();
+                c.setCardId(cardId);
+                cardRepo.findById(cardId).ifPresent(c::setCard);
+                return c;
+            });
+            content.setAiExampleDe(de);
+            content.setAiExampleEn(en);
+            content.setUpdatedAt(java.time.Instant.now());
+            aiContentRepo.save(content);
+            return AiSentenceResponse.of(de, en);
         } catch (Exception e) {
             log.warn("AI sentence generation failed for card {}: {}", cardId, e.getMessage());
             return AiSentenceResponse.unavailable();
@@ -360,6 +408,101 @@ public class AiService {
             return json.substring(0, lastClose + 1) + "]";
         }
         return "[]";
+    }
+
+    public WritingFeedbackResponse analyzeWriting(String prompt, String userText) {
+        if (!enabled) return new WritingFeedbackResponse(userText, List.of(), "?", "AI not available.");
+        try {
+            String raw = chatClient.prompt()
+                    .options(OpenAiChatOptions.builder().maxTokens(1200).build())
+                    .user(u -> u.text("""
+                            You are a German B1 language teacher. Analyse this student writing and give structured feedback.
+
+                            Task prompt: {prompt}
+
+                            Student's text:
+                            {text}
+
+                            Return ONLY a valid JSON object with:
+                            - "correctedText": the full corrected text
+                            - "corrections": array of objects {{"original": "...", "corrected": "...", "explanation": "..."}} for each error (max 8)
+                            - "cefrLevel": estimated CEFR level (A2/B1/B2 etc.)
+                            - "overallFeedback": 2-3 sentence overall feedback in English
+
+                            No markdown, no code block, just JSON.
+                            """)
+                            .param("prompt", prompt)
+                            .param("text", userText))
+                    .call()
+                    .content();
+            if (raw == null) return fallbackFeedback();
+            String json = extractJson(raw.trim());
+            JsonNode node = objectMapper.readTree(json);
+            List<WritingFeedbackResponse.Correction> corrections = new ArrayList<>();
+            node.path("corrections").forEach(c -> corrections.add(
+                    new WritingFeedbackResponse.Correction(
+                            c.path("original").asText(""),
+                            c.path("corrected").asText(""),
+                            c.path("explanation").asText(""))));
+            return new WritingFeedbackResponse(
+                    node.path("correctedText").asText(userText),
+                    corrections,
+                    node.path("cefrLevel").asText("B1"),
+                    node.path("overallFeedback").asText("Good effort!"));
+        } catch (Exception e) {
+            log.warn("Writing analysis failed: {}", e.getMessage());
+            return fallbackFeedback();
+        }
+    }
+
+    private WritingFeedbackResponse fallbackFeedback() {
+        return new WritingFeedbackResponse("", List.of(), "?", "Could not analyse your writing. Please try again.");
+    }
+
+    /**
+     * Generates vocabulary cards for a given topic at B1 level.
+     * Returns a list of GeneratedCard (not yet saved to DB — caller decides).
+     */
+    public CardGenerateResponse generateCards(String topic, String chapterId, int count) {
+        if (!enabled) return new CardGenerateResponse(List.of(), topic, chapterId, count, 0);
+        int safeCount = Math.min(Math.max(count, 3), 20);
+        try {
+            String raw = chatClient.prompt()
+                    .options(OpenAiChatOptions.builder().maxTokens(1800).build())
+                    .user(u -> u.text("""
+                            Generate {count} German B1-level vocabulary words related to the topic: "{topic}".
+                            For each word, provide:
+                            - word: the German word (noun with capital letter if applicable)
+                            - article: "der", "die", "das" for nouns, empty string for verbs/adjectives/adverbs
+                            - english: concise English translation (max 4 words)
+                            - hindi: concise Hindi translation (max 4 words)
+                            - type: one of NOUN, VERB, ADJECTIVE, ADVERB, PHRASE
+
+                            Return ONLY a valid JSON array, no markdown:
+                            [{"word":"...","article":"...","english":"...","hindi":"...","type":"..."}]
+                            """)
+                            .param("count", String.valueOf(safeCount))
+                            .param("topic", topic))
+                    .call()
+                    .content();
+            if (raw == null) return new CardGenerateResponse(List.of(), topic, chapterId, count, 0);
+            String json = extractJsonArray(raw.trim());
+            JsonNode arr = objectMapper.readTree(json);
+            List<GeneratedCard> cards = new ArrayList<>();
+            for (JsonNode node : arr) {
+                cards.add(new GeneratedCard(
+                        node.path("word").asText(""),
+                        node.path("article").asText(""),
+                        node.path("english").asText(""),
+                        node.path("hindi").asText(""),
+                        node.path("type").asText("NOUN")
+                ));
+            }
+            return new CardGenerateResponse(cards, topic, chapterId, count, cards.size());
+        } catch (Exception e) {
+            log.warn("Card generation failed for topic '{}': {}", topic, e.getMessage());
+            return new CardGenerateResponse(List.of(), topic, chapterId, count, 0);
+        }
     }
 
     private String extractJsonArray(String text) {
