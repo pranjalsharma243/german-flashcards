@@ -18,7 +18,7 @@ public class WordFrequencyService {
     private static final Set<String> A1_WORDS = Set.of(
             "sein", "haben", "werden", "können", "müssen", "sollen", "wollen", "dürfen", "machen",
             "gehen", "kommen", "sagen", "sehen", "wissen", "geben", "nehmen", "stehen", "denken",
-            "ein", "eine", "und", "ist", "ich", "du", "er", "sie", "es", "wir", "ihr", "sie",
+            "ein", "eine", "und", "ist", "ich", "du", "er", "sie", "es", "wir", "ihr", "man",
             "ja", "nein", "bitte", "danke", "hallo", "gut", "schlecht", "groß", "klein",
             "haus", "auto", "kind", "frau", "mann", "tag", "nacht", "essen", "trinken",
             "schule", "buch", "stadt", "land", "wasser", "brot", "milch", "tee", "kaffee",

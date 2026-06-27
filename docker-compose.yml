@@ -30,6 +30,25 @@ services:
       timeout: 3s
       retries: 10
 
+# Uncomment to run the Spring Boot backend as a container:
+# backend:
+#   build: ./backend
+#   ports:
+#     - "8080:8080"
+#   environment:
+#     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/flashcards
+#     SPRING_DATASOURCE_USERNAME: flashcards
+#     SPRING_DATASOURCE_PASSWORD: flashcards
+#     APP_JWT_SECRET: ${APP_JWT_SECRET}
+#     REDIS_HOST: redis
+#     REDIS_PORT: 6379
+#     OPENAI_API_KEY: ${OPENAI_API_KEY}
+#     # Google OAuth2 — set these to enable "Continue with Google"
+#     GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-disabled}
+#     GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-disabled}
+#     GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:8080/login/oauth2/code/google}
+#     FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+
 volumes:
   flashcards_postgres_data:
   flashcards_redis_data:

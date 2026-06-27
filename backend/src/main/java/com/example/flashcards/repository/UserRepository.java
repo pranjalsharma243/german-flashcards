@@ -8,5 +8,7 @@ import java.util.Optional;
 public interface UserRepository extends JpaRepository<AppUser, Long> {
     Optional<AppUser> findByUsernameIgnoreCase(String username);
 
+    Optional<AppUser> findByProviderId(String providerId);
+
     boolean existsByUsernameIgnoreCase(String username);
 }

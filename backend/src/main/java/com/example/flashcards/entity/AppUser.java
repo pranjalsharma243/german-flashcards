@@ -25,6 +25,12 @@ public class AppUser {
     @Column(nullable = false, length = 20)
     private String role = "USER";
 
+    @Column(length = 20)
+    private String provider = "LOCAL";
+
+    @Column(length = 255)
+    private String providerId;
+
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
 
@@ -54,6 +60,22 @@ public class AppUser {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public String getProvider() {
+        return provider;
+    }
+
+    public void setProvider(String provider) {
+        this.provider = provider;
+    }
+
+    public String getProviderId() {
+        return providerId;
+    }
+
+    public void setProviderId(String providerId) {
+        this.providerId = providerId;
     }
 
     public Instant getCreatedAt() {
