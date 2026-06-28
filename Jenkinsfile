@@ -10,7 +10,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                sh "${SSH} ${HOST} 'cd ${APP_DIR} && git pull origin main'"
+                sh "${SSH} ${HOST} 'cd ${APP_DIR} && git stash && git pull origin main'"
             }
         }
 
