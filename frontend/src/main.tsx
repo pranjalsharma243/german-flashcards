@@ -637,6 +637,7 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [mobMenu, setMobMenu] = React.useState(false);
+  const [moreMenu, setMoreMenu] = React.useState(false);
   const [xpData, setXpData] = React.useState<XpData>(() => loadXpData(auth.username));
   const [xpGain, setXpGain] = React.useState(0);
   const [showXpToast, setShowXpToast] = React.useState(false);
@@ -946,9 +947,10 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
               <span className="hidden font-display text-sm font-black lg:block">Deutsch Meister</span>
             </div>
 
-            {/* Nav tabs — icon + label, centered, flex-1 */}
-            <nav className="hidden flex-1 items-center justify-center gap-0.5 md:flex">
-              {navs.map(n => (
+            {/* Nav tabs — primary tabs + More dropdown */}
+            <nav className="hidden flex-1 items-center justify-center gap-0.5 md:flex" aria-label="Primary navigation">
+              {/* Primary new-design tabs always visible */}
+              {navs.slice(0, 7).map(n => (
                 <button key={n.v} onClick={() => { setMode(n.v); setMobMenu(false); }}
                   title={n.l}
                   className={cn(
@@ -961,6 +963,40 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
                   <span className="hidden xl:inline">{n.l}</span>
                 </button>
               ))}
+              {/* More dropdown for legacy modes */}
+              <div className="relative" onMouseLeave={() => setMoreMenu(false)}>
+                <button
+                  onMouseEnter={() => setMoreMenu(true)}
+                  onClick={() => setMoreMenu(v => !v)}
+                  className={cn(
+                    'flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all whitespace-nowrap',
+                    navs.slice(7).some(n => n.v === mode)
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                  )}
+                >
+                  <Menu className="h-3.5 w-3.5" />
+                  <span className="hidden xl:inline">More</span>
+                </button>
+                {moreMenu && (
+                  <div
+                    onMouseEnter={() => setMoreMenu(true)}
+                    className="absolute left-0 top-full z-50 mt-1 w-44 rounded-2xl border-2 border-border bg-card p-1.5 shadow-card-hover animate-fade-down"
+                  >
+                    {navs.slice(7).map(n => (
+                      <button key={n.v} onClick={() => { setMode(n.v); setMoreMenu(false); }}
+                        className={cn(
+                          'flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition-all',
+                          mode === n.v
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                        )}>
+                        {n.icon}{n.l}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </nav>
 
             {/* Right: user controls */}
