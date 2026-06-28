@@ -10,7 +10,20 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                sh "${SSH} ${HOST} 'cd ${APP_DIR} && git stash && git pull origin main'"
+                // Reset any local changes and sync with remote — no stash failures
+                sh "${SSH} ${HOST} 'cd ${APP_DIR} && git fetch origin && git reset --hard origin/main'"
+            }
+        }
+
+        stage('Build Frontend') {
+            when {
+                expression {
+                    sh(script: "${SSH} ${HOST} 'cd ${APP_DIR} && git diff HEAD~1 --name-only | grep -q ^frontend/'", returnStatus: true) == 0
+                }
+            }
+            steps {
+                // npm install instead of npm ci — skips reinstall if package-lock unchanged
+                sh "${SSH} ${HOST} 'cd ${APP_DIR}/frontend && npm install --prefer-offline && npm run build && systemctl reload nginx'"
             }
         }
 
@@ -22,17 +35,6 @@ pipeline {
             }
             steps {
                 sh "${SSH} ${HOST} 'cd ${APP_DIR}/backend && mvn clean package -DskipTests'"
-            }
-        }
-
-        stage('Build Frontend') {
-            when {
-                expression {
-                    sh(script: "${SSH} ${HOST} 'cd ${APP_DIR} && git diff HEAD~1 --name-only | grep -q ^frontend/'", returnStatus: true) == 0
-                }
-            }
-            steps {
-                sh "${SSH} ${HOST} 'cd ${APP_DIR}/frontend && npm ci && npm run build'"
             }
         }
 
