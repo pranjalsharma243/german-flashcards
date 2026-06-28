@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import {
   ArrowLeft, ArrowRight, BarChart3, BookOpen, Brain, Check, ChevronDown, ChevronRight,
   Eye, EyeOff, FileText, Filter, Globe, GraduationCap, Headphones, Languages, LayoutDashboard,
-  Library, LogOut, Menu, MessageSquare, PenLine, PlayCircle, Plus, RotateCcw, Save, Search, Settings, Sparkles, Star,
+  Library, LogOut, Medal, Menu, MessageSquare, PenLine, PlayCircle, Plus, RotateCcw, Save, Search, Settings, Sparkles, Star,
   SunMoon, Target, Trash2, TrendingUp, Trophy, Upload, User, Volume2, X, Zap,
 } from 'lucide-react';
 import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -16,6 +16,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
 import { cn } from './lib/utils';
 import './styles.css';
+/* ── New feature components ── */
+import { ReviewPage } from './features/review/ReviewPage';
+import { DashboardPage } from './features/dashboard/DashboardPage';
+import { ChaptersPage } from './features/chapters/ChaptersPage';
+import { StatsPage } from './features/stats/StatsPage';
+import { SettingsPage } from './features/settings/SettingsPage';
+import { GamificationPage } from './features/gamification/GamificationPage';
+import { OnboardingPage } from './features/auth/OnboardingPage';
+import { SearchPage } from './features/search/SearchPage';
+import { LandingPage as NewLandingPage } from './features/auth/LandingPage';
 
 declare global { interface Window { __germanFlashcardsRoot?: ReturnType<typeof createRoot> } }
 
@@ -26,7 +36,7 @@ type ChapterSummary = Omit<Chapter, 'cards'> & { cardCount: number };
 type ProgressState = { chapterId: string; knownCardIds: string[]; practiceCardIds: string[]; updatedAt?: string };
 type AuthSession = { token: string; username: string; role: string };
 type ThemeMode = 'light' | 'dark';
-type Mode = 'dashboard' | 'cards' | 'quiz' | 'mcq' | 'articles' | 'grammar' | 'list' | 'admin' | 'contribute' | 'chat' | 'story' | 'fsrs' | 'cloze' | 'write' | 'listen';
+type Mode = 'dashboard' | 'cards' | 'quiz' | 'mcq' | 'articles' | 'grammar' | 'list' | 'admin' | 'contribute' | 'chat' | 'story' | 'fsrs' | 'cloze' | 'write' | 'listen' | 'new-dashboard' | 'new-review' | 'chapter-list' | 'stats-view' | 'settings-view' | 'achievements' | 'ai-search';
 type FsrsQueueItem = {
   cardId: string; chapterId: string; type: string; article?: string; word: string; english: string; hindi: string;
   isNew: boolean; stability?: number; difficulty?: number; reps?: number; lapses?: number; state?: string;
@@ -99,7 +109,7 @@ function App() {
     }
   }, []);
 
-  if (view === 'landing') return <LandingPage onLogin={() => goAuth('login')} onRegister={() => goAuth('register')} />;
+  if (view === 'landing') return <NewLandingPage onLogin={() => goAuth('login')} onRegister={() => goAuth('register')} />;
   if (view === 'auth' || !auth) return <AuthScreen initialMode={authMode} onSuccess={login} onBack={() => setView('landing')} />;
   return (
     <>
@@ -593,7 +603,10 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
   const [selId, setSelId] = React.useState('');
   const [chapter, setChapter] = React.useState<Chapter | null>(null);
   const [progress, setProgress] = React.useState<ProgressState>({ chapterId: '', knownCardIds: [], practiceCardIds: [] });
-  const [mode, setMode] = React.useState<Mode>('dashboard');
+  const [mode, setMode] = React.useState<Mode>('new-dashboard');
+  const [dailyGoal, setDailyGoal] = React.useState<number>(() => parseInt(localStorage.getItem('daily-goal') ?? '50', 10));
+  const [ttsSpeed, setTtsSpeed] = React.useState<number>(() => parseFloat(localStorage.getItem('tts-speed') ?? '1.0'));
+  const [showOnboarding, setShowOnboarding] = React.useState<boolean>(() => !localStorage.getItem('onboarding-done'));
   const [query, setQuery] = React.useState('');
   const [typeFilter, setTypeFilter] = React.useState(ALL);
   const [ansLang, setAnsLang] = React.useState<AnswerLanguage>(() => (localStorage.getItem('pref-ans-lang') as AnswerLanguage) ?? 'hindi');
@@ -866,7 +879,7 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
   const dueCount = React.useMemo(() => countDueCards(all, srsData), [all, srsData]);
 
   React.useEffect(() => {
-    if (mode !== 'dashboard') return;
+    if (!['dashboard', 'new-dashboard', 'stats-view', 'achievements'].includes(mode)) return;
     fetchJson<ServerStats>(`${API}/review/stats`, auth.token)
       .then(setServerStats)
       .catch(() => {});
@@ -875,11 +888,14 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
       .catch(() => {});
   }, [mode, selId]);
 
-  // Mobile bottom bar shows first 5; order matters — highest-priority features first
+  // Primary nav — new-design tabs first, then legacy modes in overflow
   const navs: { v: Mode; icon: React.ReactNode; l: string }[] = [
-    { v: 'dashboard', icon: <LayoutDashboard className="h-4 w-4" />, l: 'Home' },
-    { v: 'fsrs', icon: <Zap className="h-4 w-4" />, l: 'Review' },
-    { v: 'cards', icon: <BookOpen className="h-4 w-4" />, l: 'Cards' },
+    { v: 'new-dashboard', icon: <LayoutDashboard className="h-4 w-4" />, l: 'Home' },
+    { v: 'new-review', icon: <Zap className="h-4 w-4" />, l: 'Review' },
+    { v: 'chapter-list', icon: <BookOpen className="h-4 w-4" />, l: 'Chapters' },
+    { v: 'stats-view', icon: <BarChart3 className="h-4 w-4" />, l: 'Stats' },
+    { v: 'achievements', icon: <Trophy className="h-4 w-4" />, l: 'Awards' },
+    { v: 'ai-search', icon: <Search className="h-4 w-4" />, l: 'Search' },
     { v: 'chat', icon: <MessageSquare className="h-4 w-4" />, l: 'AI Chat' },
     { v: 'quiz', icon: <Brain className="h-4 w-4" />, l: 'Quiz' },
     { v: 'mcq', icon: <Target className="h-4 w-4" />, l: 'MCQ' },
@@ -890,17 +906,31 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
     { v: 'write', icon: <FileText className="h-4 w-4" />, l: 'Write' },
     { v: 'story', icon: <Sparkles className="h-4 w-4" />, l: 'Story' },
     { v: 'listen', icon: <Headphones className="h-4 w-4" />, l: 'Listen' },
+    { v: 'settings-view', icon: <Settings className="h-4 w-4" />, l: 'Settings' },
     { v: 'contribute', icon: <Upload className="h-4 w-4" />, l: 'Contribute' },
     ...(auth.role === 'ADMIN' ? [{ v: 'admin' as Mode, icon: <Settings className="h-4 w-4" />, l: 'Admin' }] : []),
   ];
 
   const selChapter = chapters.find(c => c.id === selId);
 
+  if (showOnboarding) {
+    return (
+      <OnboardingPage
+        onComplete={(data) => {
+          localStorage.setItem('onboarding-done', '1');
+          localStorage.setItem('daily-goal', String(data.dailyGoal));
+          setDailyGoal(data.dailyGoal);
+          setShowOnboarding(false);
+        }}
+      />
+    );
+  }
+
   return (
     <main className="h-dvh overflow-hidden">
       {showXpToast && (
-        <div className="fixed right-4 top-16 z-[60] animate-fade-up rounded-xl bg-secondary px-4 py-2 text-sm font-bold text-secondary-foreground shadow-lg pointer-events-none">
-          +{xpGain} XP ⚡
+        <div className="fixed right-4 top-16 z-[60] animate-bounce-in rounded-2xl bg-gold border-2 border-gold/80 px-4 py-2.5 font-display text-sm font-black text-[#1F2937] shadow-lg pointer-events-none" style={{ boxShadow: '0 4px 0 #c0921a' }}>
+          ⚡ +{xpGain} XP
         </div>
       )}
       <section className="flex h-full flex-col">
@@ -910,8 +940,10 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
 
             {/* Logo */}
             <div className="flex shrink-0 items-center gap-2 mr-2">
-              <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-white"><Languages className="h-4 w-4" /></div>
-              <span className="hidden text-sm font-bold lg:block">Deutsch Meister</span>
+              <div className="grid h-8 w-8 place-items-center rounded-xl bg-primary text-white shadow-glow-sm">
+                <Languages className="h-4 w-4" />
+              </div>
+              <span className="hidden font-display text-sm font-black lg:block">Deutsch Meister</span>
             </div>
 
             {/* Nav tabs — icon + label, centered, flex-1 */}
@@ -962,42 +994,134 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
 
           {/* Mobile dropdown */}
           {mobMenu && (
-            <div className="absolute inset-x-0 top-full z-50 animate-fade-down border-b bg-white/95 p-3 shadow-md backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/90 md:hidden">
-              <div className="mb-2 flex gap-0.5 rounded-md border bg-muted/30 p-0.5 dark:border-white/10">
-                {['all', ...levels].map(lv => (
-                  <button key={lv} onClick={() => setLevelFilter(lv)}
-                    className={cn('flex-1 rounded px-1.5 py-1 text-[10px] font-bold uppercase transition-all',
-                      levelFilter === lv ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground')}>
-                    {lv === 'all' ? 'All' : lv}
-                  </button>
-                ))}
+            <div className="absolute inset-x-0 top-full z-50 animate-fade-down border-b-2 border-border bg-card/98 p-4 shadow-card-hover backdrop-blur-2xl md:hidden">
+              {/* User row */}
+              <div className="mb-3 flex items-center justify-between rounded-2xl bg-muted/40 px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="grid h-8 w-8 place-items-center rounded-xl bg-primary/15 text-primary font-display font-black text-sm">
+                    {auth.username.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-foreground">{auth.username}</p>
+                    {xpData.streak > 0 && <p className="text-[10px] text-muted-foreground">🔥 {xpData.streak}-day streak</p>}
+                  </div>
+                </div>
+                <Button variant="ghost" size="sm" onClick={onLogout} className="h-8 gap-1 text-xs text-muted-foreground">
+                  <LogOut className="h-3.5 w-3.5" /> Logout
+                </Button>
               </div>
-              <Select value={selId} onValueChange={setSelId}>
-                <SelectTrigger className="mb-2 bg-white/80 dark:border-white/10 dark:bg-slate-950/70"><SelectValue /></SelectTrigger>
-                <SelectContent>{visibleChapters.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}</SelectContent>
-              </Select>
-              <div className="grid grid-cols-5 gap-1">
+              {/* All nav items in grid */}
+              <div className="grid grid-cols-4 gap-1.5">
                 {navs.map(n => (
                   <button key={n.v} onClick={() => { setMode(n.v); setMobMenu(false); }}
-                    className={cn('flex flex-col items-center gap-1 rounded-xl p-2 text-[10px] font-medium transition-all',
-                      mode === n.v ? 'bg-primary/8 text-primary' : 'text-muted-foreground hover:bg-muted/50')}>
-                    {n.icon}{n.l}
+                    className={cn(
+                      'flex flex-col items-center gap-1 rounded-xl p-2.5 text-[10px] font-bold transition-all',
+                      mode === n.v ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    )}>
+                    {n.icon}
+                    <span className="leading-none">{n.l}</span>
                   </button>
                 ))}
               </div>
-              <div className="mt-2 flex items-center justify-between rounded-lg bg-muted/20 p-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-medium">{auth.username}</span>
-                  {xpData.streak > 0 && <span className="text-xs">🔥{xpData.streak}</span>}
+              {/* Legacy chapter selector (only visible when on a legacy screen) */}
+              {!['new-dashboard', 'new-review', 'chapter-list', 'stats-view', 'settings-view', 'achievements', 'ai-search'].includes(mode) && (
+                <div className="mt-3 border-t border-border pt-3">
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Chapter</p>
+                  <div className="mb-2 flex gap-0.5 rounded-xl border border-border bg-muted/30 p-0.5">
+                    {['all', ...levels].map(lv => (
+                      <button key={lv} onClick={() => setLevelFilter(lv)}
+                        className={cn('flex-1 rounded-lg px-1.5 py-1 text-[10px] font-bold uppercase transition-all',
+                          levelFilter === lv ? 'bg-primary text-white' : 'text-muted-foreground')}>
+                        {lv === 'all' ? 'All' : lv}
+                      </button>
+                    ))}
+                  </div>
+                  <Select value={selId} onValueChange={setSelId}>
+                    <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
+                    <SelectContent>{visibleChapters.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}</SelectContent>
+                  </Select>
                 </div>
-                <Button variant="ghost" size="sm" onClick={onLogout} className="h-7 text-xs"><LogOut className="h-3 w-3" /> Logout</Button>
-              </div>
+              )}
             </div>
           )}
         </header>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-4 pb-24 pt-4 md:pb-8 md:px-6">
+        <div className="flex-1 overflow-y-auto pb-24 md:pb-8">
+          {/* ═══ NEW DESIGN SCREENS ═══ */}
+          {mode === 'new-dashboard' && (
+            loading && !chapters.length ? (
+              <DashboardSkeleton />
+            ) : error ? (
+              <div className="mx-auto max-w-md px-4 py-16 text-center">
+                <p className="text-4xl mb-4">⚠️</p>
+                <h2 className="font-display text-xl font-bold text-foreground">Connection error</h2>
+                <p className="mt-2 text-sm text-muted-foreground">{error}</p>
+                <Button onClick={() => window.location.reload()} className="mt-6">Retry</Button>
+              </div>
+            ) : (
+              <DashboardPage
+                username={auth.username}
+                xpData={xpData}
+                chapters={chapters}
+                stats={serverStats}
+                dueTotal={serverStats?.perChapter ? Object.values(serverStats.perChapter).reduce((s, c) => s + c.dueNow, 0) : 0}
+                onStartReview={(cid) => { if (cid) setSelId(cid); setMode('new-review'); }}
+                onGoChapters={() => setMode('chapter-list')}
+                onGoStats={() => setMode('stats-view')}
+                dailyGoal={dailyGoal}
+              />
+            )
+          )}
+          {mode === 'new-review' && (
+            <ReviewPage
+              token={auth.token}
+              chapterId={selId}
+              chapterTitle={chapters.find(c => c.id === selId)?.title}
+              onBack={() => setMode('new-dashboard')}
+              onXp={awardXp}
+            />
+          )}
+          {mode === 'chapter-list' && (
+            <ChaptersPage
+              token={auth.token}
+              chapters={chapters}
+              perChapterStats={serverStats?.perChapter ?? {}}
+              onStartReview={(cid) => { setSelId(cid); setMode('new-review'); }}
+            />
+          )}
+          {mode === 'stats-view' && (
+            <StatsPage
+              stats={serverStats}
+              chapters={chapters}
+              isDark={theme === 'dark'}
+            />
+          )}
+          {mode === 'settings-view' && (
+            <SettingsPage
+              theme={(theme === 'light' || theme === 'dark') ? theme : 'light'}
+              onThemeChange={(t) => { if (t !== 'system') { applyTheme(t); } onToggleTheme(); }}
+              dailyGoal={dailyGoal}
+              onDailyGoalChange={(g) => { setDailyGoal(g); localStorage.setItem('daily-goal', String(g)); }}
+              username={auth.username}
+              onLogout={onLogout}
+              ttsSpeed={ttsSpeed}
+              onTtsSpeedChange={(s) => { setTtsSpeed(s); localStorage.setItem('tts-speed', String(s)); }}
+            />
+          )}
+          {mode === 'achievements' && (
+            <GamificationPage
+              xpData={xpData}
+              stats={serverStats}
+              dailyGoal={dailyGoal}
+            />
+          )}
+          {mode === 'ai-search' && (
+            <SearchPage token={auth.token} />
+          )}
+          {/* ═══ LEGACY SCREENS (hidden when new screens are active) ═══ */}
+          {!['new-dashboard', 'new-review', 'chapter-list', 'stats-view', 'settings-view', 'achievements', 'ai-search'].includes(mode) && (
+          <div className="px-4 pt-4 md:px-6">
           {/* Chapter + level selector bar (desktop, below header) */}
           <div className="mx-auto mb-4 hidden max-w-7xl items-center gap-2 md:flex">
             <div className="flex gap-0.5 rounded-md border bg-white/70 p-0.5 dark:border-white/10 dark:bg-slate-950/50">
@@ -1889,24 +2013,44 @@ function MainApp({ auth, onLogout, theme, onToggleTheme }: { auth: AuthSession; 
               <ListenView token={auth.token} chapter={chapter} onXp={awardXp} />
             )}
           </div>
+          </div>
+          )} {/* end legacy wrapper */}
         </div>
 
-        {/* Mobile bottom nav */}
-        <nav className="md:hidden shrink-0 border-t border-border/60 bg-white/90 backdrop-blur-2xl dark:bg-slate-950/85">
-          <div className="mx-auto grid max-w-lg pb-safe" style={{ gridTemplateColumns: `repeat(${Math.min(navs.length, 5)}, 1fr)` }}>
-            {navs.slice(0, 5).map(n => (
-              <button key={n.v} onClick={() => setMode(n.v)}
-                className={cn(
-                  'tap-highlight-none flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-semibold transition-colors active:opacity-70',
-                  mode === n.v ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
-                )}>
-                <span className={cn('relative grid h-7 w-7 place-items-center rounded-xl transition-all duration-200', mode === n.v ? 'bg-primary/12 scale-110' : 'scale-100')}>
-                  {n.icon}
-                  {mode === n.v && <span className="absolute -bottom-0.5 left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full bg-primary" />}
-                </span>
-                {n.l}
-              </button>
-            ))}
+        {/* Mobile bottom nav — 5 primary tabs (Duolingo style) */}
+        <nav className="md:hidden shrink-0 border-t-2 border-border bg-card/95 backdrop-blur-2xl" aria-label="Main navigation">
+          <div className="mx-auto grid max-w-lg pb-safe" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+            {[
+              { v: 'new-dashboard' as Mode, icon: <LayoutDashboard className="h-5 w-5" />, l: 'Home' },
+              { v: 'new-review' as Mode, icon: <Zap className="h-5 w-5" />, l: 'Review' },
+              { v: 'chapter-list' as Mode, icon: <BookOpen className="h-5 w-5" />, l: 'Chapters' },
+              { v: 'achievements' as Mode, icon: <Trophy className="h-5 w-5" />, l: 'Awards' },
+              { v: 'settings-view' as Mode, icon: <Settings className="h-5 w-5" />, l: 'Settings' },
+            ].map(n => {
+              const active = mode === n.v;
+              return (
+                <button
+                  key={n.v}
+                  onClick={() => setMode(n.v)}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'relative flex flex-col items-center gap-1 py-2 text-[10px] font-bold transition-colors',
+                    active ? 'text-primary' : 'text-muted-foreground'
+                  )}
+                >
+                  <span className={cn(
+                    'grid h-8 w-8 place-items-center rounded-2xl transition-all duration-200',
+                    active ? 'bg-primary/12' : ''
+                  )}>
+                    {n.icon}
+                  </span>
+                  {n.l}
+                  {active && (
+                    <span className="absolute top-0 left-1/2 h-0.5 w-8 -translate-x-1/2 rounded-full bg-primary" />
+                  )}
+                </button>
+              );
+            })}
           </div>
         </nav>
       </section>
@@ -3980,6 +4124,25 @@ function FsrsReviewView({
           Tap card or swipe up to reveal
         </p>
       )}
+    </div>
+  );
+}
+
+/* ═══════════════ SKELETON LOADERS ═══════════════ */
+
+function DashboardSkeleton() {
+  return (
+    <div className="mx-auto max-w-2xl space-y-5 px-4 py-6">
+      <div className="skeleton h-8 w-48 rounded-xl" />
+      <div className="skeleton h-4 w-64 rounded-full" />
+      <div className="grid grid-cols-3 gap-3">
+        {[...Array(3)].map((_, i) => <div key={i} className="skeleton h-24 rounded-2xl" />)}
+      </div>
+      <div className="skeleton h-32 rounded-2xl" />
+      <div className="grid grid-cols-2 gap-3">
+        {[...Array(2)].map((_, i) => <div key={i} className="skeleton h-24 rounded-2xl" />)}
+      </div>
+      <div className="skeleton h-40 rounded-2xl" />
     </div>
   );
 }

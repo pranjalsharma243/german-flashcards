@@ -3,16 +3,18 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/utils';
 
 const badgeVariants = cva(
-  'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-all duration-200',
+  'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold transition-all duration-200',
   {
     variants: {
       variant: {
-        default: 'border-transparent bg-primary text-primary-foreground shadow-sm',
-        secondary: 'border-transparent bg-secondary/90 text-secondary-foreground shadow-sm',
-        outline: 'text-foreground bg-white/50 dark:bg-slate-900/50',
-        muted: 'border-transparent bg-muted/80 text-muted-foreground',
-        success: 'border-transparent bg-accent/90 text-accent-foreground shadow-sm',
-        destructive: 'border-transparent bg-destructive/90 text-destructive-foreground shadow-sm',
+        default: 'border-transparent bg-primary text-primary-foreground',
+        secondary: 'border-transparent bg-gold/90 text-[#1F2937]',
+        outline: 'border-border text-foreground bg-card',
+        muted: 'border-transparent bg-muted text-muted-foreground',
+        success: 'border-transparent bg-success/15 border-success/30 text-success',
+        destructive: 'border-transparent bg-danger/15 border-danger/30 text-danger',
+        warning: 'border-transparent bg-warning/15 border-warning/30 text-[#1F2937] dark:text-warning',
+        info: 'border-transparent bg-info/15 border-info/30 text-info',
         glass: 'border-white/20 bg-white/15 text-white backdrop-blur-sm',
       },
     },
